@@ -582,4 +582,5 @@ temp-delete.py
 
 gdd_compute_crop_cal_testing_200524.py
 
-.DS_Store/
+.DS_Store
+.idea

@@ -46,15 +46,19 @@ class Soil:
         z_top=0.1,
     ):
 
+        # Soil type name
         self.Name = soil_type
 
+        # Soil is divided into compartments of length of dz vertically
         self.zSoil = sum(dz)  # Total thickness of soil profile (m)
         self.nComp = len(dz)  # Total number of soil compartments
+
         self.nLayer = 0  # Total number of soil layers
+
+        # Various soil parameters used to calculate the evaporation.
+
         self.adj_rew = adj_rew  # Adjust default value for readily evaporable water (0 = No, 1 = Yes)
         self.rew = rew  # Readily evaporable water (mm) (only used if adjusting from default value)
-        self.calc_cn = calc_cn  # adjust Curve number based on Ksat
-        self.cn = cn  # Curve number  (0 = No, 1 = Yes)
         self.z_res = z_res  # Depth of restrictive soil layer (set to negative value if not present)
 
         # Assign default program properties (should not be changed without expert knowledge)
@@ -73,12 +77,26 @@ class Soil:
         )
         self.f_wrel_exp = f_wrel_exp  # Proportional value of Wrel at which soil evaporation layer expands
         self.fwcc = fwcc  # Maximum coefficient for soil evaporation reduction due to sheltering effect of withered canopy
+
+
+        # Various soil parameters used to estimate curve number for the given field. Curve Number is used to
+        # calculate potential maximum soil moisture retention after runoff begins.
+
+        self.cn = cn  # Curve number  (0 = No, 1 = Yes)
         self.z_cn = z_cn  # Thickness of soil surface (m) used to calculate water content to adjust curve number
-        self.z_germ = z_germ  # Thickness of soil surface (m) used to calculate water content for germination
         self.adj_cn = (
             adj_cn  # Adjust curve number for antecedent moisture content (0: No, 1: Yes)
         )
+
+        # Thickness of soil surface to consider during germination
+        self.z_germ = z_germ  # Thickness of soil surface (m) used to calculate water content for germination
+
+        # Capillary rise happens from ground water if present.
+        # It's a parameter that accounts for the geometry and distribution of pore spaces within a soil.
+        # The smaller the soil pores, the higher is the capillary rise.
         self.fshape_cr = fshape_cr  # Capillary rise shape factor
+
+
         self.z_top = max(
             z_top, dz[0]
         )  # Thickness of soil surface layer for water stress comparisons (m)
@@ -225,7 +243,20 @@ class Soil:
         Function to calculate soil hydraulic properties, given textural inputs.
         Calculations use pedotransfer function equations described in Saxton and Rawls (2006)
 
+        Input Parameters:
+        Sand: Percentage of sand in the soil
+        Clay: Percentage of clay in the soil
+        OrgMat: Percentage of organic matter in the soil
+        DF: Density Factor, related to bulk density
 
+        Returns:
+            th_wp: Water content at permanent wilting point. It's the volumetric water content at which
+                    plants can no longer extract water from the soil and will permanently wilt (wither).
+            th_fc: Water content at field capacity. Volumetric water content of the soil after it has been saturated
+                    and allowed to drain freely for a day or two. Represents upper limit of water available for plants.
+            th_s: Water content at saturation. Volumetric water content when all soil pores are filled with water.
+            Ksat: Saturated hydraulic conductivity. Represents the ease with which water moves through a saturated soil.
+                    Expressed in mm/day.
         """
 
         # do calculations
