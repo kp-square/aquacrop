@@ -36,9 +36,10 @@ def simulate_rainfall(step):
     Rainfall in m^3 per m^2 per hour.  A simple example with no rain for most of the day,
     and a brief period of rain in the late afternoon/early evening.
   """
-
+  if step > 100:
+      return 0.0
   if step < 70 and 17 <= step <= 19:  # Rain between 5 PM and 7 PM
-    return 0.002/3600  # Example: 2mm/hour rainfall = 0.002 m/hr
+    return 0.010/3600  # Example: 2mm/hour rainfall = 0.002 m/hr
   else:
     return 0.0
 
@@ -52,6 +53,8 @@ def simulate_irrigation(step):
     Irrigation in m^3 per m^2 per hour.  A simple example with irrigation in the
     early morning and late evening.
   """
+  if step > 100:
+      return 0.0
   if step < 60 and 6 <= step <= 7:    # Irrigate between 6 AM and 7 AM
     return 0.002/3600  # Example: 2mm/hour irrigation
   elif step < 70 and 20 <= step <= 21: # Irrigate between 8 PM and 9 PM
@@ -63,13 +66,10 @@ def simulate_irrigation(step):
 max_iter = 1000  # maximum possible picard iterations
 
 
-# harmonic mean is used to calculate the conductivity on the surface
-def harmonic_mean(K_i, K_j):
+# mean is used to calculate the conductivity on the surface
+def mean(K_i, K_j):
     return (K_i + K_j)/2
-    # K_min = 1e-15  # Minimum K threshold
-    # K_i_safe = np.maximum(K_i, K_min)
-    # K_j_safe = np.maximum(K_j, K_min)
-    # return (2 * K_i_safe * K_j_safe) / (K_i_safe + K_j_safe)
+
 
 
 # maximum infiltration possible at top layer
@@ -96,7 +96,7 @@ def calculate_h0(rainfall, irrigation, h_curr, pars, dz):
     raise ValueError("Fixed point iteration did not converge")
 
 # Apply boundary condition directly into the system of linear equations.
-def apply_top_bc(A, b, R, h_current, K_current, dz, pars):
+def apply_top_bc(A, b, R, h_current, K_current, dz, pars, iter):
     """
     Update surface matric potential (h0) and calculate runoff during a Picard iteration.
 
@@ -117,16 +117,13 @@ def apply_top_bc(A, b, R, h_current, K_current, dz, pars):
     Ks = pars['Ks']
 
     # Extract current h0 and h1 (first subsurface node)
-    h0_prev = h_current[0]
-    h1 = h_current[1]
 
-    q_unsat = -K_current[0] * (1 + (h1 - h0_prev) / dz)
+    infil_cap = -K_current[0] * ((h_current[1]- h_current[0])/dz + 1)
+    q_unsat = Ks
     if R <= q_unsat:
         flux = R
-        h0_updated = h0_prev
     else:
-        flux = min(Ks, R)
-        h0_updated = 0.0
+        flux = q_unsat
 
     sink = flux/dz
     # Update b with flux
@@ -135,7 +132,7 @@ def apply_top_bc(A, b, R, h_current, K_current, dz, pars):
     # Keep h0 at or below zero
     runoff = max(0, R - flux)
 
-    return h0_updated, runoff
+    return runoff
 
 
 def compute_deep_percolation(K_half, h_bottom, h_current, dz, dt):
@@ -183,6 +180,8 @@ def assemble_system(K_half, C_val, theta_prev, theta_curr, h_curr, dz, dt):
     A[0, 1] = - K_half[0] / dz ** 2
     b[0] = (theta_prev[0] - theta_curr[0] + (C_val[0] * h_curr[0])) / dt + K_half[0] / dz
     # middle compartments
+
+
     for i in range(1, n):
         A[i, i - 1] = - K_half[i - 1] / dz ** 2
         A[i, i] = C_val[i] / dt + (K_half[i] + K_half[i - 1]) / dz ** 2
@@ -223,7 +222,7 @@ def main():
     L = 1
     z = np.linspace(0, L, Nz)
     #time = np.arange(0, T + dt, dt)
-    Nt = 200
+    Nt = 150
 
     # Array to store the pressure head at each node at each time step
     psi = np.zeros((Nz, Nt))
@@ -270,31 +269,31 @@ def main():
 
             K_step = K_val[:, step]
             # first layer is bit complicated as we need to set up boundary condition.
-            K_half = harmonic_mean(K_step[:-1], K_step[1:])
+            K_half = mean(K_step[:-1], K_step[1:])
             # K_half = 2 / (1/K_step[:-1] + 1/K_step[1:])
 
             # if there's rainfall or irrigation, updated h_current
 
             A, b = assemble_system(K_half, C_current, theta_prev, theta_current, h_current, dz, dt)
 
+
             if R > 0:
-                h0_updated, runoff = apply_top_bc(A, b, R, h_current, K_current, dz, pars)
-                h_current[0] = h0_updated
+                runoff = apply_top_bc(A, b, R, h_current, K_current, dz, pars, iter)
             else:
                 runoff = 0.0
 
             h_new = spsolve(A, b)
-
+            h_new[h_new > 0] = 0.0
             # Check convergence
             # if np.max(np.abs(h_new - h_current)) < tolerance:
             #     break
             # convergence check with relative tolerance
-            min_val = np.max(np.abs(h_new - h_current))
-            if min_val < tolerance:
+            max_diff = np.max(np.abs(h_new - h_current))
+            if max_diff < tolerance:
                 break
 
             # relaxation factor
-            h_current = h_new.copy()
+            h_current = h_new * 0.6 + h_current * 0.4
 
             theta_current = thetaf(h_current, pars)
             K_current = K(h_current, pars)
@@ -315,5 +314,5 @@ def main():
     print('completed simulation')
 
 
-if __name__=='__main__':
+if __name__ == '__main__':
     main()
