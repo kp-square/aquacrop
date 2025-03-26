@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 from scipy.sparse.linalg import spsolve
 
@@ -72,59 +74,29 @@ def mean(K_i, K_j):
 
 
 
-# maximum infiltration possible at top layer
-def compute_q_max(K_half_top, h0, h1, dz):
-    return K_half_top * ((h1 - h0) / dz + 1)
-
-
-# iteratively calculate boundary value using Newton's Raphson method
-def calculate_h0(rainfall, irrigation, h_curr, pars, dz):
-    R = rainfall + irrigation
-    if R > pars['Ks']:
-        return 0.0
-    runoff = max(R - pars['Ks'], 0.0)
-    h0 = h_curr[0]
-    h1 = h_curr[1]
-    omega = 0.5
-    for i in range(1000):
-        Kh0 = K(h0,pars)
-        h_new = h1 + dz * (- R / Kh0 - 1)
-        delta = h_new - h0
-        h0 += omega * delta
-        if abs(delta) < 1e-10:
-            return h0
-    raise ValueError("Fixed point iteration did not converge")
 
 # Apply boundary condition directly into the system of linear equations.
 def apply_top_bc(A, b, R, h_current, K_current, dz, pars, iter):
-    """
-    Update surface matric potential (h0) and calculate runoff during a Picard iteration.
 
-    Args:
-        h_current (array): Current matric potential values [m] (including h0 at index 0).
-        K_half (array): Hydraulic conductivity at cell interfaces [m/hr] (K_half[0] = surface conductivity).
-        R: rainfall (float): Rainfall rate [m/hr] + irrigation (float): Irrigation rate [m/hr].
-        dz (float): Vertical grid spacing [m].
-        pars (dict): Soil parameters (must include 'Ks' for saturated conductivity).
-
-    Returns:
-        tuple: (h0_updated, runoff)
-            h0_updated (float): Updated surface matric potential [m].
-            runoff (float): Runoff rate [m/hr].
-    """
-    # Sink = irrigation + precipitation - evaporation - deep_percolation
-    # Compute maximum infiltration capacity
     Ks = pars['Ks']
 
     # Extract current h0 and h1 (first subsurface node)
+    h0 = h_current[0]
+    h1 = h_current[1]
 
-    infil_cap = -K_current[0] * ((h_current[1]- h_current[0])/dz + 1)
-    q_unsat = Ks
-    if R <= q_unsat:
+    dhdz = (h1 - h0)/dz
+    Ktop = K_current[0]
+
+    infil_cap = -Ktop * (dhdz + 1)
+    if R <= infil_cap:
         flux = R
     else:
-        flux = q_unsat
+        #h_current[0] = 0
+        dhdz = (h_current[1] - h0)/dz
+        infil_cap = -Ks * (dhdz + 1)
+        flux = min(R, infil_cap)
 
+    flux = max(0, flux)
     sink = flux/dz
     # Update b with flux
     b[0] += sink
@@ -158,7 +130,7 @@ def compute_deep_percolation(K_half, h_bottom, h_current, dz, dt):
     return q_bottom, percolation_volume
 
 
-def assemble_system(K_half, C_val, theta_prev, theta_curr, h_curr, dz, dt):
+def assemble_system(K_half, C_val, theta_prev, theta_curr, h_curr, dz, dt, K_top, K_bottom):
     '''
     K_half : Value of K at boundary of each soil compartments
     C_val: value of C at each compartment
@@ -175,27 +147,32 @@ def assemble_system(K_half, C_val, theta_prev, theta_curr, h_curr, dz, dt):
     A = np.zeros((n + 1, n + 1))
     b = np.zeros(n + 1)
 
-    # top boundary
+    # z increases downward, so i + 1/2 is upper layer and i-1/2 is the lower layer
+    # top boundary in case of rainfall
     A[0, 0] = C_val[0] / dt + (K_half[0]) / dz ** 2
     A[0, 1] = - K_half[0] / dz ** 2
-    b[0] = (theta_prev[0] - theta_curr[0] + (C_val[0] * h_curr[0])) / dt + K_half[0] / dz
+    b[0] = (theta_prev[0] - theta_curr[0] + (C_val[0] * h_curr[0])) / dt - K_half[0] / dz
     # middle compartments
-
 
     for i in range(1, n):
         A[i, i - 1] = - K_half[i - 1] / dz ** 2
         A[i, i] = C_val[i] / dt + (K_half[i] + K_half[i - 1]) / dz ** 2
         A[i, i + 1] = - K_half[i] / dz ** 2
-        b[i] = (theta_prev[i] - theta_curr[i] + C_val[i] * h_curr[i]) / dt + (K_half[i] - K_half[i - 1]) / dz
+        b[i] = (theta_prev[i] - theta_curr[i] + C_val[i] * h_curr[i]) / dt + (K_half[i-1] - K_half[i]) / dz
 
     # bottom boundary
-    A[n, n - 1] = - K_half[n - 1] / dz ** 2
-    A[n, n] = C_val[n] / dt + (K_half[n - 1]) / dz ** 2
+    if h_curr[n] > 0:
+        A[n, n-1] = 0.0
+        A[n, n] = 1.0
+        b[n] = 0.0
+    else:
+        A[n, n - 1] = - K_half[n - 1] / dz ** 2
+        A[n, n] = C_val[n] / dt + ( K_half[n - 1]) / (dz) ** 2
 
-    # Let bottom boundary be 0 for now
-    # b[n] = 0
-    # free drainage
-    b[n] = (theta_prev[n] - theta_curr[n] + C_val[n] * h_curr[n]) / dt + K_half[n - 1] / dz
+        # Let bottom boundary be 0 for now
+        # b[n] = 0
+        # free drainage
+        b[n] = (theta_prev[n] - theta_curr[n] + C_val[n] * h_curr[n]) / dt + ( K_half[n-1])/dz - K_bottom/dz
 
     return A, b
 
@@ -222,7 +199,7 @@ def main():
     L = 1
     z = np.linspace(0, L, Nz)
     #time = np.arange(0, T + dt, dt)
-    Nt = 150
+    Nt = 400
 
     # Array to store the pressure head at each node at each time step
     psi = np.zeros((Nz, Nt))
@@ -274,8 +251,7 @@ def main():
 
             # if there's rainfall or irrigation, updated h_current
 
-            A, b = assemble_system(K_half, C_current, theta_prev, theta_current, h_current, dz, dt)
-
+            A, b = assemble_system(K_half, C_current, theta_prev, theta_current, h_current, dz, dt, K_step[0], K_step[-1])
 
             if R > 0:
                 runoff = apply_top_bc(A, b, R, h_current, K_current, dz, pars, iter)
@@ -283,7 +259,6 @@ def main():
                 runoff = 0.0
 
             h_new = spsolve(A, b)
-            h_new[h_new > 0] = 0.0
             # Check convergence
             # if np.max(np.abs(h_new - h_current)) < tolerance:
             #     break
@@ -293,7 +268,13 @@ def main():
                 break
 
             # relaxation factor
-            h_current = h_new * 0.6 + h_current * 0.4
+            if np.all(h_current >= -1e-1):
+                h_current = h_new
+            else:
+                h_current = h_new * 0.6 + h_current * 0.4
+
+            # if soil becomes saturated, it doesn't make sense to calculate it.
+            h_current[h_current > 0] = 0.0
 
             theta_current = thetaf(h_current, pars)
             K_current = K(h_current, pars)
