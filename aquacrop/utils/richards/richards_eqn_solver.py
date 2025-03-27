@@ -38,12 +38,12 @@ def simulate_rainfall(step):
     Rainfall in m^3 per m^2 per hour.  A simple example with no rain for most of the day,
     and a brief period of rain in the late afternoon/early evening.
   """
-  if step > 100:
-      return 0.0
-  if step < 70 and 17 <= step <= 19:  # Rain between 5 PM and 7 PM
-    return 0.010/3600  # Example: 2mm/hour rainfall = 0.002 m/hr
+  if (step % 18*24) in [0,1,2]:  # Rain between 5 PM and 7 PM
+    return 0.005  # Example: 2mm/hour rainfall = 0.005 m/hr
+  if (step % 10*24) in [0,1,2]:  # Rain between 5 PM and 7 PM
+    return 0.002  # Example: 2mm/hour rainfall = 0.002 m/hr
   else:
-    return 0.0
+    return -0.1/1000 # 0.1 mm/hr (average evaporation over growing months)
 
 def simulate_irrigation(step):
   """Simulates irrigation for a given hour.
@@ -55,12 +55,10 @@ def simulate_irrigation(step):
     Irrigation in m^3 per m^2 per hour.  A simple example with irrigation in the
     early morning and late evening.
   """
-  if step > 100:
+  if step > 1500:
       return 0.0
-  if step < 60 and 6 <= step <= 7:    # Irrigate between 6 AM and 7 AM
-    return 0.002/3600  # Example: 2mm/hour irrigation
-  elif step < 70 and 20 <= step <= 21: # Irrigate between 8 PM and 9 PM
-    return 0.001/3600  # Example: 1mm/hour irrigation
+  if step % (7*24) in [0,1,2]:    # Irrigate 6mm every week.
+    return 0.002  # Example: 2mm/hour irrigation
   else:
     return 0.0
 
@@ -72,8 +70,108 @@ max_iter = 1000  # maximum possible picard iterations
 def mean(K_i, K_j):
     return (K_i + K_j)/2
 
+def calculate_top_flux_runoff(R, h_current, K_current, dz, pars):
+    """
+    Calculates the actual surface flux (Darcy convention, upward positive)
+    and runoff based on the potential flux rate R and the current soil state.
+    Updates h_current[0] in-place if ponding occurs.
 
+    Args:
+        R (float): Potential flux rate (+ve potential infiltration, -ve potential evaporation).
+                   NOTE: This R follows meteorological convention!
+        h_current (np.array): Current pressure heads (h[0] is surface).
+        K_current (np.array): Current hydraulic conductivities corresponding to h_current.
+        dz (float): Spacing between surface node (0) and first node below (1).
+                    Must be positive.
+        pars (dict): Dictionary containing parameters, requires 'Ks'.
 
+    Returns:
+        tuple: (q_darcy, runoff)
+            q_darcy (float): The actual Darcy flux across the surface boundary
+                             (positive upward, negative downward).
+            runoff (float): The runoff generated (always >= 0).
+    """
+    # --- Input Validation and Initialization ---
+    if dz <= 0:
+        raise ValueError("dz must be positive to calculate gradient.")
+    if len(h_current) < 2 or len(K_current) < 1:
+         raise ValueError("h_current must have at least 2 elements, K_current at least 1.")
+
+    # Only execute meaningful calculations if R is non-zero
+    if np.isclose(R, 0.0):
+        return 0.0, 0.0  # No potential flux -> no actual flux, no runoff
+
+    Ks = pars['Ks']
+    h0 = h_current[0]
+    h1 = h_current[1] # Head at first node below surface
+    K0 = K_current[0] # Conductivity corresponding to h0
+
+    runoff = 0.0
+    q_darcy = 0.0 # Initialize actual Darcy flux (downward positive)
+
+    # Calculate potential flux the soil can transmit based on current gradient
+    # grad_H = dh/dz + 1 = (h1 - h0)/dz + 1
+    # q_soil_potential is the Darcy flux (upward positive) the soil could
+    # sustain given the current h0, h1, K0 state.
+    grad_H = (h1 - h0) / dz + 1
+    q_soil_potential = -K0 * grad_H
+
+    # --- Apply Boundary Condition Logic ---
+
+    if R > 0: # Potential Infiltration (Downward Flow, q_darcy should be negative)
+        potential_infiltration_rate = R # Magnitude of infiltration demand
+
+        if h0 >= 0: # Case 1: Surface is already saturated/ponded
+            # Flux limited by min of demand (R) and saturated conductivity (Ks)
+            # Actual infiltration rate (magnitude)
+            actual_inf_rate = min(potential_infiltration_rate, Ks)
+            q_darcy = actual_inf_rate # Upward flux is positive
+            runoff = potential_infiltration_rate - actual_inf_rate
+            h_current[0] = 0.0 # Enforce h=0 at surface if saturated
+
+        else: # Case 2: Surface is unsaturated (h0 < 0)
+            # Calculate soil's infiltration capacity magnitude
+            # Downward flow corresponds to negative q_soil_potential
+            infiltration_capacity_magnitude = max(0.0, q_soil_potential)
+
+            if potential_infiltration_rate <= infiltration_capacity_magnitude:
+                # Case 2a: Soil can infiltrate all potential rain
+                actual_inf_rate = potential_infiltration_rate
+                q_darcy = actual_inf_rate
+                runoff = 0.0
+                # h_current[0] remains unchanged (still < 0)
+            else:
+                # Case 2b: Rain exceeds infiltration capacity -> ponding occurs
+                actual_inf_rate = infiltration_capacity_magnitude
+                q_darcy = actual_inf_rate
+                runoff = potential_infiltration_rate - actual_inf_rate
+                h_current[0] = 0.0 # Surface becomes saturated
+
+    elif R < 0: # Potential Evaporation (Upward Flow, q_darcy should be positive)
+        potential_evaporation_rate = - R # Magnitude of evaporation demand (positive)
+        runoff = 0.0 # No runoff during evaporation
+
+        if h0 >= 0: # Case 3: Surface is saturated/ponded
+            # If saturated, assume soil can meet potential evaporation demand
+            # (This might be energy-limited in reality, but often modeled this way)
+            # Actual evaporation rate (magnitude)
+            actual_evap_rate = potential_evaporation_rate
+            q_darcy = - actual_evap_rate # Upward flux is negative flux
+            # Note: If ponded depth > 0, evaporation removes water from pond first.
+            # Setting h_current[0]=0 assumes pond is depleted or wasn't tracked.
+
+        else: # Case 4: Surface is unsaturated (h0 < 0)
+            # Calculate soil's exfiltration capacity magnitude (max upward flux)
+            # Upward flow corresponds to positive q_soil_potential
+            exfiltration_capacity_magnitude = q_soil_potential
+
+            # Actual evaporation rate is limited by minimum of demand and capacity
+            actual_evap_rate = min(potential_evaporation_rate, exfiltration_capacity_magnitude)
+            q_darcy = - actual_evap_rate # Upward flux is negative flux
+            # h_current[0] remains unchanged (still < 0)
+
+    # Return the calculated actual Darcy flux and any generated runoff
+    return q_darcy, runoff
 
 # Apply boundary condition directly into the system of linear equations.
 def apply_top_bc(A, b, R, h_current, K_current, dz, pars, iter):
@@ -83,18 +181,21 @@ def apply_top_bc(A, b, R, h_current, K_current, dz, pars, iter):
     # Extract current h0 and h1 (first subsurface node)
     h0 = h_current[0]
     h1 = h_current[1]
-
-    dhdz = (h1 - h0)/dz
-    Ktop = K_current[0]
-
-    infil_cap = -Ktop * (dhdz + 1)
-    if R <= infil_cap:
-        flux = R
+    if h0 >= 0:
+        flux = min(R, Ks)
+        h_current[0] = 0.0
     else:
-        #h_current[0] = 0
-        dhdz = (h_current[1] - h0)/dz
-        infil_cap = -Ks * (dhdz + 1)
-        flux = min(R, infil_cap)
+        dhdz = (h1 - h0)/dz
+        Ktop = K_current[0]
+
+        infil_cap = -Ktop * (dhdz + 1)
+        if R <= infil_cap:
+            flux = R
+        else:
+            #h_current[0] = 0
+            dhdz = (h_current[1] - h0)/dz
+            infil_cap = -Ks * (dhdz + 1)
+            flux = min(R, infil_cap)
 
     flux = max(0, flux)
     sink = flux/dz
@@ -172,7 +273,7 @@ def assemble_system(K_half, C_val, theta_prev, theta_curr, h_curr, dz, dt, K_top
         # Let bottom boundary be 0 for now
         # b[n] = 0
         # free drainage
-        b[n] = (theta_prev[n] - theta_curr[n] + C_val[n] * h_curr[n]) / dt + ( K_half[n-1])/dz - K_bottom/dz
+        b[n] = (theta_prev[n] - theta_curr[n] + C_val[n] * h_curr[n]) / dt + (K_half[n-1] - K_bottom)/dz
 
     return A, b
 
@@ -188,18 +289,18 @@ def main():
     pars['alpha'] = 0.423
     pars['n'] = 2.06
     pars['m'] = 1 - 1 / pars['n']
-    pars['Ks'] = 0.0496 / 3600 # m/s
+    pars['Ks'] = 0.03 # m/hr
     pars['neta'] = 0.5 # fixed value
     pars['Ss'] = 0.000001
 
     dz = 0.1
     Nz = 10
     #T = 100
-    dt = 3600
+    dt = 1
     L = 1
     z = np.linspace(0, L, Nz)
     #time = np.arange(0, T + dt, dt)
-    Nt = 400
+    Nt = 2160
 
     # Array to store the pressure head at each node at each time step
     psi = np.zeros((Nz, Nt))
@@ -219,17 +320,17 @@ def main():
         # returns (m^3 per sq.m per hour)
         # takes current hour as input
         print(f'time = {step} hour')
-        rainfall = simulate_rainfall(step % 24)
-        irrigation = simulate_irrigation(step % 24)
+        rainfall = simulate_rainfall(step)
+        irrigation = simulate_irrigation(step)
         R = rainfall + irrigation
         if step > 0:
             theta_prev = theta_val[:, step - 1]
             h_current = psi[:, step - 1].copy()
 
         else:
-            h_current = np.full(Nz, -67.5)
-            h_current[0] = -20.0
-            theta_prev = thetaf(h_current + 5.0, pars)
+            h_current = np.full(Nz, -60.5)
+            h_current[0] = -30.0
+            theta_prev = thetaf(h_current + 1.0, pars)
 
 
         theta_current = thetaf(h_current, pars)
@@ -253,10 +354,12 @@ def main():
 
             A, b = assemble_system(K_half, C_current, theta_prev, theta_current, h_current, dz, dt, K_step[0], K_step[-1])
 
-            if R > 0:
-                runoff = apply_top_bc(A, b, R, h_current, K_current, dz, pars, iter)
-            else:
-                runoff = 0.0
+            # if R != 0:
+            #     runoff = apply_top_bc(A, b, R, h_current, K_current, dz, pars, iter)
+            # else:
+            #     runoff = 0.0
+            flux, runoff = calculate_top_flux_runoff(R, h_current, K_current, dz, pars)
+            b[0] += (-flux)/dz # downward positive flux
 
             h_new = spsolve(A, b)
             # Check convergence
@@ -268,13 +371,13 @@ def main():
                 break
 
             # relaxation factor
-            if np.all(h_current >= -1e-1):
+            if np.all(h_current >= -1e-6):
                 h_current = h_new
             else:
                 h_current = h_new * 0.6 + h_current * 0.4
 
             # if soil becomes saturated, it doesn't make sense to calculate it.
-            h_current[h_current > 0] = 0.0
+            # h_current[h_current > 0] = 0.0
 
             theta_current = thetaf(h_current, pars)
             K_current = K(h_current, pars)
