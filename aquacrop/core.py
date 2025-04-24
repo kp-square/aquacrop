@@ -37,6 +37,7 @@ from .initialize.read_model_parameters import read_model_parameters
 from .initialize.read_weather_inputs import read_weather_inputs
 from .timestep.check_if_model_is_finished import check_model_is_finished
 from .timestep.run_single_timestep import solution_single_time_step
+from .timestep.run_single_timestep_richards import solution_single_time_step_richards
 from .timestep.update_time import update_time
 from .timestep.outputs_when_model_is_finished import outputs_when_model_is_finished
 
@@ -103,11 +104,13 @@ class AquaCropModel:
         fallow_field_management: Optional["FieldMngt"] = None,
         groundwater: Optional["GroundWater"] = None,
         co2_concentration: Optional["CO2"] = None,
-        off_season: bool=False,
+        off_season: bool = False,
+        step_size: str = 'D'
     ) -> None:
 
         self.sim_start_time = sim_start_time
         self.sim_end_time = sim_end_time
+        self.step_size = step_size
         self.weather_df = weather_df
         self.soil = soil
         self.crop = crop
@@ -167,6 +170,25 @@ class AquaCropModel:
             raise ValueError("sim_end_time format must be 'YYYY/MM/DD'")
 
     @property
+    def step_size(self) -> str:
+        """
+        Return step size
+        """
+        return self._step_size
+
+    @step_size.setter
+    def step_size(self, value:str):
+        """
+        Check if step_size is either Day or Hour
+        """
+        value = value.lower()
+        if value not in ['h', 'd']:
+            raise ValueError(
+                "Invalid step_size. It should be either day 'd' or hour 'h'."
+            )
+        self._step_size = value
+
+    @property
     def weather_df(self) -> "DataFrame":
         """
         Return weather dataframe
@@ -178,7 +200,11 @@ class AquaCropModel:
         """
         Check if weather dataframe is in a correct format.
         """
-        weather_df_columns = "Date MinTemp MaxTemp Precipitation ReferenceET".split(" ")
+
+        if self.step_size == 'h':
+            weather_df_columns = "Date MeanTemp Precipitation ReferenceET".split(" ")
+        else:
+            weather_df_columns = "Date MinTemp MaxTemp Precipitation ReferenceET".split(" ")
         if not all([column in value for column in weather_df_columns]):
             raise ValueError(
                 "Error in weather_df format. Check if all the following columns exist "
@@ -318,17 +344,26 @@ class AquaCropModel:
 
         # extract _weather data for current timestep
         weather_step = _weather_data_current_timestep(
-            self._weather, self._clock_struct.time_step_counter
+            self._weather, self._clock_struct.time_step_counter, self._step_size
         )
 
         # Get model solution_single_time_step
-        new_cond, param_struct, outputs = solution_single_time_step(
-            self._init_cond,
-            self._param_struct,
-            self._clock_struct,
-            weather_step,
-            self._outputs,
-        )
+        if self.step_size == 'h':
+            new_cond, param_struct, outputs = solution_single_time_step_richards(
+                self._init_cond,
+                self._param_struct,
+                self._clock_struct,
+                weather_step,
+                self._outputs,
+            )
+        else:
+            new_cond, param_struct, outputs = solution_single_time_step(
+                self._init_cond,
+                self._param_struct,
+                self._clock_struct,
+                weather_step,
+                self._outputs,
+            )
 
         # Check model termination
         clock_struct = self._clock_struct
@@ -474,8 +509,13 @@ def _sim_date_format_is_correct(date: str) -> bool:
         return False
 
 
-def _weather_data_current_timestep(_weather, time_step_counter):
+def _weather_data_current_timestep(_weather, time_step_counter, step_size='d'):
     """
     Extract _weather data for current timestep
     """
-    return _weather[time_step_counter]
+    if step_size == 'h':
+        start = 24 * time_step_counter
+        end = start + 24
+        return _weather[start:end]
+    else:
+        return _weather[time_step_counter]

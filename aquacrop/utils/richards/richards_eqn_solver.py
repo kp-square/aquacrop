@@ -1,69 +1,45 @@
 import math
 
 import numpy as np
+from typing import Tuple, TYPE_CHECKING
+from scipy.sparse import csc_matrix
 from scipy.sparse.linalg import spsolve
+if TYPE_CHECKING:
+    # Important: classes are only imported when types are checked, not in production.
+    from numpy import ndarray
+    from aquacrop.entities.clockStruct import ClockStruct
+    from aquacrop.entities.initParamVariables import InitialCondition
+    from aquacrop.entities.paramStruct import ParamStruct
+    from aquacrop.entities.output import Output
+    from aquacrop.entities.crop import Crop
 
 def thetaf(psi,pars):
     '''Calculate volumetric water content using the van Genuchten model'''
     Se=(1+(psi*-pars['alpha'])**pars['n'])**(-pars['m'])
     Se[psi>0.]=1.0
-    return pars['thetaR']+(pars['thetaS']-pars['thetaR'])*Se
+    return np.array(pars['thetaR']+(pars['thetaS']-pars['thetaR'])*Se)
 
-# def C(psi,pars):
-#     '''Calculate specific moisture capacity (C)'''
-#     Se=(1+(psi*-pars['alpha'])**pars['n'])**(-pars['m'])
-#     Se[psi>0.]=1.0
-#     dSedh=pars['alpha']*pars['m']/(1-pars['m'])*Se**(1/pars['m'])*(1-Se**(1/pars['m']))**pars['m']
-#     return Se*pars['Ss']+(pars['thetaS']-pars['thetaR'])*dSedh
 
 def C(psi, pars):
     "Calculate specific moisture capacity C(h) = d(theta)/dh"
     nume = pars['m'] * pars['n'] * pars['alpha'] * (pars['alpha'] * np.abs(psi))**(pars['n']-1)
     denom = (1 + (pars['alpha'] * np.abs(psi))**(pars['n']))**(pars['m']+1)
-    return -(pars['thetaS'] - pars['thetaR']) * nume/denom * psi/(np.abs(psi)+1e-10)
+    return np.array(-(pars['thetaS'] - pars['thetaR']) * nume/denom * psi/(np.abs(psi)+1e-10))
 
 def K(psi,pars):
     '''Compute hydraulic conductivity via the Mualem model'''
     Se=(1+(psi*-pars['alpha'])**pars['n'])**(-pars['m'])
     Se[psi>0.]=1.0
-    return pars['Ks']*Se**pars['neta']*(1-(1-Se**(1/pars['m']))**pars['m'])**2
+    return np.array(pars['Ks']*Se**pars['neta']*(1-(1-Se**(1/pars['m']))**pars['m'])**2)
 
-def simulate_rainfall(step):
-  """Simulates rainfall for a given hour.
-
-  Args:
-    step: The current hour (0-23).
-
-  Returns:
-    Rainfall in m^3 per m^2 per hour.  A simple example with no rain for most of the day,
-    and a brief period of rain in the late afternoon/early evening.
-  """
-  if (step % 18*24) in [0,1,2]:  # Rain between 5 PM and 7 PM
-    return 0.005  # Example: 2mm/hour rainfall = 0.005 m/hr
-  if (step % 10*24) in [0,1,2]:  # Rain between 5 PM and 7 PM
-    return 0.002  # Example: 2mm/hour rainfall = 0.002 m/hr
-  else:
-    return -0.1/1000 # 0.1 mm/hr (average evaporation over growing months)
-
-def simulate_irrigation(step):
-  """Simulates irrigation for a given hour.
-
-  Args:
-    step: The current hour (0-23).
-
-  Returns:
-    Irrigation in m^3 per m^2 per hour.  A simple example with irrigation in the
-    early morning and late evening.
-  """
-  if step > 1500:
-      return 0.0
-  if step % (7*24) in [0,1,2]:    # Irrigate 6mm every week.
-    return 0.002  # Example: 2mm/hour irrigation
-  else:
-    return 0.0
+def psi_fun(theta, pars):
+    '''Compute matric potential from the volumetric water content'''
+    pw1 = pars['n']/(pars['n']-1)
+    temp1 = ((pars['thetaS'] - pars['thetaR'])/(theta - pars['thetaR']))**pw1 - 1
+    return np.array(-(1.0 /pars['alpha']) * (temp1 ** (1/pars['n'])))
 
 
-max_iter = 1000  # maximum possible picard iterations
+max_iter = 100  # maximum possible picard iterations
 
 
 # mean is used to calculate the conductivity on the surface
@@ -113,8 +89,8 @@ def calculate_top_flux_runoff(R, h_current, K_current, dz, pars):
     # grad_H = dh/dz + 1 = (h1 - h0)/dz + 1
     # q_soil_potential is the Darcy flux (upward positive) the soil could
     # sustain given the current h0, h1, K0 state.
-    grad_H = (h1 - h0) / dz + 1
-    q_soil_potential = -K0 * grad_H
+    grad_H = (h1 - 0.0) / dz + 1
+    q_soil_potential = - K0 * grad_H
 
     # --- Apply Boundary Condition Logic ---
 
@@ -173,40 +149,6 @@ def calculate_top_flux_runoff(R, h_current, K_current, dz, pars):
     # Return the calculated actual Darcy flux and any generated runoff
     return q_darcy, runoff
 
-# Apply boundary condition directly into the system of linear equations.
-def apply_top_bc(A, b, R, h_current, K_current, dz, pars, iter):
-
-    Ks = pars['Ks']
-
-    # Extract current h0 and h1 (first subsurface node)
-    h0 = h_current[0]
-    h1 = h_current[1]
-    if h0 >= 0:
-        flux = min(R, Ks)
-        h_current[0] = 0.0
-    else:
-        dhdz = (h1 - h0)/dz
-        Ktop = K_current[0]
-
-        infil_cap = -Ktop * (dhdz + 1)
-        if R <= infil_cap:
-            flux = R
-        else:
-            #h_current[0] = 0
-            dhdz = (h_current[1] - h0)/dz
-            infil_cap = -Ks * (dhdz + 1)
-            flux = min(R, infil_cap)
-
-    flux = max(0, flux)
-    sink = flux/dz
-    # Update b with flux
-    b[0] += sink
-
-    # Keep h0 at or below zero
-    runoff = max(0, R - flux)
-
-    return runoff
-
 
 def compute_deep_percolation(K_half, h_bottom, h_current, dz, dt):
     """
@@ -223,15 +165,15 @@ def compute_deep_percolation(K_half, h_bottom, h_current, dz, dt):
         percolation_volume: Cumulative percolation over Δt [m].
     """
     # Compute Darcy flux at bottom boundary (positive downward)
-    q_bottom = K_half[-1] * 1.0
+    q_bottom = K_half[-1] * 1.0 #(/hr)
 
     # Convert flux to volume per unit area over Δt (e.g., meters of water)
-    percolation_volume = q_bottom * dt
+    percolation = q_bottom * dz
 
-    return q_bottom, percolation_volume
+    return q_bottom, percolation #(m/hr)
 
 
-def assemble_system(K_half, C_val, theta_prev, theta_curr, h_curr, dz, dt, K_top, K_bottom):
+def assemble_system(K_half, C_val, theta_prev, theta_curr, h_curr, dz, dt, K_top, K_bottom, diff_water):
     '''
     K_half : Value of K at boundary of each soil compartments
     C_val: value of C at each compartment
@@ -250,16 +192,16 @@ def assemble_system(K_half, C_val, theta_prev, theta_curr, h_curr, dz, dt, K_top
 
     # z increases downward, so i + 1/2 is upper layer and i-1/2 is the lower layer
     # top boundary in case of rainfall
-    A[0, 0] = C_val[0] / dt + (K_half[0]) / dz ** 2
-    A[0, 1] = - K_half[0] / dz ** 2
-    b[0] = (theta_prev[0] - theta_curr[0] + (C_val[0] * h_curr[0])) / dt - K_half[0] / dz
+    A[0, 0] = C_val[0] / dt + (K_half[0]) / dz[0] ** 2
+    A[0, 1] = - K_half[0] / dz[0] ** 2
+    b[0] = (theta_prev[0] - theta_curr[0] + (C_val[0] * h_curr[0])) / dt - K_half[0] / dz[0] + diff_water[0]
     # middle compartments
 
     for i in range(1, n):
-        A[i, i - 1] = - K_half[i - 1] / dz ** 2
-        A[i, i] = C_val[i] / dt + (K_half[i] + K_half[i - 1]) / dz ** 2
-        A[i, i + 1] = - K_half[i] / dz ** 2
-        b[i] = (theta_prev[i] - theta_curr[i] + C_val[i] * h_curr[i]) / dt + (K_half[i-1] - K_half[i]) / dz
+        A[i, i - 1] = - K_half[i - 1] / dz[i] ** 2
+        A[i, i] = C_val[i] / dt + (K_half[i] + K_half[i - 1]) / dz[i] ** 2
+        A[i, i + 1] = - K_half[i] / dz[i] ** 2
+        b[i] = (theta_prev[i] - theta_curr[i] + C_val[i] * h_curr[i]) / dt + (K_half[i-1] - K_half[i]) / dz[i] + diff_water[i]
 
     # bottom boundary
     if h_curr[n] > 0:
@@ -267,107 +209,95 @@ def assemble_system(K_half, C_val, theta_prev, theta_curr, h_curr, dz, dt, K_top
         A[n, n] = 1.0
         b[n] = 0.0
     else:
-        A[n, n - 1] = - K_half[n - 1] / dz ** 2
-        A[n, n] = C_val[n] / dt + ( K_half[n - 1]) / (dz) ** 2
+        last_dz = dz.iloc[-1]
+        A[n, n - 1] = - K_half[n - 1] / last_dz ** 2
+        A[n, n] = C_val[n] / dt + ( K_half[n - 1]) / (last_dz) ** 2
 
         # Let bottom boundary be 0 for now
         # b[n] = 0
         # free drainage
-        b[n] = (theta_prev[n] - theta_curr[n] + C_val[n] * h_curr[n]) / dt + (K_half[n-1] - K_bottom)/dz
+        b[n] = (theta_prev[n] - theta_curr[n] + C_val[n] * h_curr[n]) / dt + (K_half[n-1] - K_bottom)/last_dz + diff_water[-1]
 
     return A, b
 
 
-def main():
-    # Define some initial soil parameters
-    # SandyLoam # source: https://www.gsshawiki.com/Infiltration:Parameter_Estimates
-    # source: https://www.nature.com/articles/s41597-022-01481-5/tables/6
-    # source: https://www.pc-progress.com/en/OnlineHelp/HYDRUS3/Hydrus.html?WaterFlowParameters.html
-    pars = {}
-    pars['thetaR'] = 0.131
-    pars['thetaS'] = 0.387
-    pars['alpha'] = 0.423
-    pars['n'] = 2.06
-    pars['m'] = 1 - 1 / pars['n']
-    pars['Ks'] = 0.03 # m/hr
-    pars['neta'] = 0.5 # fixed value
-    pars['Ss'] = 0.000001
 
-    dz = 0.1
-    Nz = 10
-    #T = 100
-    dt = 1
-    L = 1
-    z = np.linspace(0, L, Nz)
-    #time = np.arange(0, T + dt, dt)
-    Nt = 2160
+class RichardEquationSolver:
+    def __init__(self, soil_profile, prev_cond):
+        self.pars = {}
+        self.pars['thetaR'] = soil_profile.th_r
+        self.pars['thetaS'] = soil_profile.th_s
+        self.pars['alpha'] = soil_profile.alpha
+        self.pars['n'] = soil_profile.n_param
+        self.pars['m'] = 1 - 1 / self.pars['n']
+        self.pars['Ks'] = (soil_profile.Ksat / 1000)/24.0 # m/hr
+        self.pars['neta'] = soil_profile.neta  # fixed value
+        self.dz = soil_profile.dz
+        self.Nz = len(self.dz)
+        # T = 100
+        self.dt = 1
+        self.L = sum(self.dz)
+        # z = np.linspace(0, L, Nz)
+        # time = np.arange(0, T + dt, dt)
+        self.Nt = 24
+        self.psi = np.zeros((self.Nz, self.Nt))
+        self.psi[:, 0] = psi_fun(prev_cond.th, self.pars)
+        self.theta_val = np.zeros((self.Nz, self.Nt))
+        self.runoff_val = np.zeros(self.Nt)
+        self.deep_percolation_val = np.zeros(self.Nt)
+        self.K_val = np.zeros((self.Nz, self.Nt))
+        self.C_val = np.zeros((self.Nz, self.Nt))
+        self.tolerance = 1e-5
+        self.prev_cond = prev_cond
 
-    # Array to store the pressure head at each node at each time step
-    psi = np.zeros((Nz, Nt))
-    psi[:, 0] = -z
-
-    # Array to store the water content in each node at each time step
-    theta_val = np.zeros((Nz, Nt))
-    runoff_val = np.zeros(Nt)
-    deep_percolation_val = np.zeros(Nt)
-
-    # initialize the initial water content in each compartment by executing theta function.
-    K_val = np.zeros((Nz, Nt))
-    C_val = np.zeros((Nz, Nt))
-    tolerance = 1e-10
-
-    for step in range(Nt):
-        # returns (m^3 per sq.m per hour)
+    def solve(self, step, new_cond, irrigation, rainfall):
         # takes current hour as input
-        print(f'time = {step} hour')
-        rainfall = simulate_rainfall(step)
-        irrigation = simulate_irrigation(step)
-        R = rainfall + irrigation
+        # print(f'hour: {step}')
+        R = (rainfall + irrigation)/1000.0
         if step > 0:
-            theta_prev = theta_val[:, step - 1]
-            h_current = psi[:, step - 1].copy()
-
+            theta_prev = self.theta_val[:, step - 1]
+            h_current = self.psi[:, step - 1].copy()
         else:
-            h_current = np.full(Nz, -60.5)
-            h_current[0] = -30.0
-            theta_prev = thetaf(h_current + 1.0, pars)
+            theta_prev = np.array(self.prev_cond.th)
+            h_current = psi_fun(theta_prev, self.pars)
 
-
-        theta_current = thetaf(h_current, pars)
-        K_current = K(h_current, pars)
-        C_current = C(h_current, pars)
-
+        theta_current = thetaf(h_current, self.pars)
+        K_current = K(h_current, self.pars)
+        C_current = C(h_current, self.pars)
+        Infl = 0.0
+        diff_water_content = new_cond.th - theta_prev
         # at each timestep, update the value of theta, K and C for each compartment
         for iter in range(max_iter):
             # at each step of picard iteration
             # values at iter = m
-            theta_val[:, step] = thetaf(h_current, pars)
-            K_val[:, step] = K(h_current, pars)
-            C_val[:, step] = C(h_current, pars)
+            self.theta_val[:, step] = thetaf(h_current, self.pars)
+            self.K_val[:, step] = K(h_current, self.pars)
+            self.C_val[:, step] = C(h_current, self.pars)
 
-            K_step = K_val[:, step]
+            K_step = self.K_val[:, step]
             # first layer is bit complicated as we need to set up boundary condition.
             K_half = mean(K_step[:-1], K_step[1:])
             # K_half = 2 / (1/K_step[:-1] + 1/K_step[1:])
 
             # if there's rainfall or irrigation, updated h_current
 
-            A, b = assemble_system(K_half, C_current, theta_prev, theta_current, h_current, dz, dt, K_step[0], K_step[-1])
+            A, b = assemble_system(K_half, C_current, theta_prev, theta_current, h_current, self.dz, self.dt, K_step[0],
+                                   K_step[-1], diff_water_content)
 
             # if R != 0:
             #     runoff = apply_top_bc(A, b, R, h_current, K_current, dz, pars, iter)
             # else:
             #     runoff = 0.0
-            flux, runoff = calculate_top_flux_runoff(R, h_current, K_current, dz, pars)
-            b[0] += (-flux)/dz # downward positive flux
-
-            h_new = spsolve(A, b)
+            flux, runoff = calculate_top_flux_runoff(R, h_current, K_current, self.dz[0], self.pars)
+            b[0] += (-flux) / self.dz[0]  # downward positive flux
+            Infl = flux * self.dz[0]
+            h_new = spsolve(csc_matrix(A), b)
             # Check convergence
             # if np.max(np.abs(h_new - h_current)) < tolerance:
             #     break
             # convergence check with relative tolerance
             max_diff = np.max(np.abs(h_new - h_current))
-            if max_diff < tolerance:
+            if max_diff < self.tolerance:
                 break
 
             # relaxation factor
@@ -379,24 +309,21 @@ def main():
             # if soil becomes saturated, it doesn't make sense to calculate it.
             # h_current[h_current > 0] = 0.0
 
-            theta_current = thetaf(h_current, pars)
-            K_current = K(h_current, pars)
-            C_current = C(h_current, pars)
+            theta_current = thetaf(h_current, self.pars)
+            K_current = K(h_current, self.pars)
+            C_current = C(h_current, self.pars)
 
         # update theta/K/C
-        theta_val[:, step] = theta_current
-        K_val[:, step] = K_current
-        C_val[:, step] = C_current
-        runoff_val[step] = runoff # unit: m/hr
-        psi[:, step] = h_current
+        self.theta_val[:, step] = theta_current
+        self.K_val[:, step] = K_current
+        self.C_val[:, step] = C_current
+        self.runoff_val[step] = runoff  # unit: m/hr
+        self.psi[:, step] = h_current
 
         # calculate deep percolation
         h_bottom = h_current[-1]
-        q_bottom, deep_percolation = compute_deep_percolation(K_half, h_bottom, h_current, dz, dt)
-        deep_percolation_val[step] = deep_percolation
+        q_bottom, deep_percolation = compute_deep_percolation(K_half, h_bottom, h_current, self.dz.iloc[-1], self.dt)
+        self.deep_percolation_val[step] = deep_percolation
 
-    print('completed simulation')
-
-
-if __name__ == '__main__':
-    main()
+        new_cond.th = self.theta_val[:, step].flatten()
+        return new_cond, deep_percolation, runoff, Infl, K_current

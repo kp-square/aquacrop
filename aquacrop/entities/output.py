@@ -24,7 +24,6 @@ class Output:
     def __init__(self, time_span, initial_th):
 
         self.water_storage = np.zeros((len(time_span), 3 + len(initial_th)))
-        self.water_flux = np.zeros((len(time_span), 16))
         self.crop_growth = np.zeros((len(time_span), 15))
         self.final_stats = pd.DataFrame(
             columns=[
@@ -36,5 +35,26 @@ class Output:
                 "Fresh yield (tonne/ha)",
                 "Yield potential (tonne/ha)",
                 "Seasonal irrigation (mm)",
+            ]
+        )
+        self.water_flux = pd.DataFrame(
+            columns=[
+                'time_step_counter',
+                'season_counter',
+                'day_after_plant',
+                'Wr',
+                'z_ground_water',
+                'surface_storage',
+                'IrrDay',
+                'Infl',
+                'Runoff',
+                'DeepPerc',
+                'CapillaryRise',
+                'GroundWaterIn',
+                'Es',
+                'EsPot',
+                'Tr',
+                'TrPot',
+                'RootZoneWater'
             ]
         )

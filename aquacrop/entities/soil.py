@@ -10,6 +10,8 @@ class Soil:
 
     More float attributes are specified in the initialisation of the class
 
+    Source of Van Genuchten parameters : https://www.researchgate.net/figure/Parameters-used-in-Van-Genuchten-equations-for-each-soil-type-Values-are-taken-from_tbl1_229811166
+
     Attributes:
 
         profile (pandas.DataFrame): holds soil profile information
@@ -109,91 +111,91 @@ class Soil:
             self.calc_cn = 0
             self.rew = 14
             self.create_df(dz)
-            self.add_layer(sum(dz), 0.39, 0.54, 0.55, 35, 100)
+            self.add_layer(sum(dz), 0.39, 0.54, 0.55, 35, 100, 0.068, 0.8, 1.09, 0.5)
 
         elif soil_type == "ClayLoam":
             self.cn = 72
             self.calc_cn = 0
             self.rew = 11
             self.create_df(dz)
-            self.add_layer(sum(dz), 0.23, 0.39, 0.5, 125, 100)
+            self.add_layer(sum(dz), 0.23, 0.39, 0.5, 125, 100, 0.095, 1.9, 1.31, 0.5)
 
         elif soil_type == 'Default':
             self.cn = 61
             self.calc_cn = 0
             self.rew = 9
             self.create_df(dz)
-            self.add_layer(sum(dz), 0.1, 0.3, 0.5, 500, 100)
+            self.add_layer(sum(dz), 0.1, 0.3, 0.5, 500, 100, 0.067, 2.0, 1.41, 0.5)
 
         elif soil_type == "Loam":
             self.cn = 61
             self.calc_cn = 0
             self.rew = 9
             self.create_df(dz)
-            self.add_layer(sum(dz), 0.15, 0.31, 0.46, 500, 100)
+            self.add_layer(sum(dz), 0.15, 0.31, 0.46, 500, 100, 0.078, 3.6, 1.56, 0.5)
 
         elif soil_type == "LoamySand":
             self.cn = 46
             self.calc_cn = 0
             self.rew = 5
             self.create_df(dz)
-            self.add_layer(sum(dz), 0.08, 0.16, 0.38, 2200, 100)
+            self.add_layer(sum(dz), 0.08, 0.16, 0.38, 2200, 100, 0.065, 7.5, 1.89, 0.5)
 
         elif soil_type == "Sand":
             self.cn = 46
             self.calc_cn = 0
             self.rew = 4
             self.create_df(dz)
-            self.add_layer(sum(dz), 0.06, 0.13, 0.36, 3000, 100)
+            self.add_layer(sum(dz), 0.06, 0.13, 0.36, 3000, 100, 0.045, 14.5, 2.68, 0.5)
 
         elif soil_type == "SandyClay":
             self.cn = 77
             self.calc_cn = 0
             self.rew = 10
             self.create_df(dz)
-            self.add_layer(sum(dz), 0.27, 0.39, 0.5, 35, 100)
+            self.add_layer(sum(dz), 0.27, 0.39, 0.5, 35, 100, 0.2, 2.7, 1.23, 0.5)
 
         elif soil_type == "SandyClayLoam":
             self.cn = 72
             self.calc_cn = 0
             self.rew = 9
             self.create_df(dz)
-            self.add_layer(sum(dz), 0.20, 0.32, 0.47, 225, 100)
+            self.add_layer(sum(dz), 0.20, 0.32, 0.47, 225, 100, 0.1, 5.9, 1.48, 0.5)
 
         elif soil_type == "SandyLoam":
             self.cn = 46
             self.calc_cn = 0
             self.rew = 7
             self.create_df(dz)
-            self.add_layer(sum(dz), 0.10, 0.22, 0.41, 1200, 100)
+            self.add_layer(sum(dz), 0.10, 0.22, 0.41, 1200, 100, 0.065, 7.5, 1.89, 0.5)
 
         elif soil_type == "Silt":
             self.cn = 61
             self.calc_cn = 0
             self.rew = 11
             self.create_df(dz)
-            self.add_layer(sum(dz), 0.09, 0.33, 0.43, 500, 100)
+            self.add_layer(sum(dz), 0.09, 0.33, 0.43, 500, 100, 0.070, 2.0, 1.41, 0.5)
 
         elif soil_type == "SiltClayLoam":
             self.cn = 72
             self.calc_cn = 0
             self.rew = 13
             self.create_df(dz)
-            self.add_layer(sum(dz), 0.23, 0.44, 0.52, 150, 100)
+            self.add_layer(sum(dz), 0.23, 0.44, 0.52, 150, 100, 0.089, 1.0, 1.23,  0.5)
 
         elif soil_type == "SiltLoam":
             self.cn = 61
             self.calc_cn = 0
             self.rew = 11
             self.create_df(dz)
-            self.add_layer(sum(dz), 0.13, 0.33, 0.46, 575, 100)
+            self.add_layer(sum(dz), 0.13, 0.33, 0.46, 575, 100, 0.067, 2.0, 1.41, 0.5)
 
         elif soil_type == "SiltClay":
             self.cn = 72
             self.calc_cn = 0
             self.rew = 14
             self.create_df(dz)
-            self.add_layer(sum(dz), 0.32, 0.50, 0.54, 100, 100)
+            self.add_layer(sum(dz), 0.32, 0.50, 0.54, 100, 100, 0.070, 0.5, 1.09, 0.5)
 
         elif soil_type == "Paddy":
             self.cn = 77
@@ -337,7 +339,8 @@ class Soil:
 
         self.add_layer(thickness, th_wp, th_fc, th_s, Ksat, penetrability)
 
-    def add_layer(self, thickness, thWP, thFC, thS, Ksat, penetrability):
+    #Default values have been assigned for thR(dimensionless), alpha(per meter), nParam(dimensionless), neta(dimensionless)
+    def add_layer(self, thickness, thWP, thFC, thS, Ksat, penetrability, thR=0.065, alpha=7.5, nParam=1.89, neta=0.5):
 
         self.nLayer += 1
 
@@ -374,6 +377,18 @@ class Soil:
         self.profile.loc[
             self.profile.Layer == new_layer, "penetrability"
         ] = self.profile.Layer.map({new_layer: penetrability})
+        self.profile.loc[
+            self.profile.Layer == new_layer, "th_r"
+        ] = self.profile.Layer.map({new_layer: thR})
+        self.profile.loc[
+            self.profile.Layer == new_layer, "alpha"
+        ] = self.profile.Layer.map({new_layer: alpha})
+        self.profile.loc[
+            self.profile.Layer == new_layer, "n_param"
+        ] = self.profile.Layer.map({new_layer: nParam})
+        self.profile.loc[
+            self.profile.Layer == new_layer, "neta"
+        ] = self.profile.Layer.map({new_layer: neta})
 
         # Calculate drainage characteristic (tau)
         # Calculations use equation given by Raes et al. 2012

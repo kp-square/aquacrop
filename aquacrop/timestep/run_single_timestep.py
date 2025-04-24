@@ -162,6 +162,7 @@ def solution_single_time_step(
 
     # Run simulations %%
     # 1. Check for groundwater table
+    # fc : field capacity, fc_Adj : adjusted field capacity, th : theta (volumetric water content), z_gw: groundwater depth
     NewCond.th_fc_Adj, NewCond.wt_in_soil, NewCond.z_gw = check_groundwater_table(
         Soil.Profile,
         NewCond.z_gw,
@@ -199,7 +200,6 @@ def solution_single_time_step(
     )
 
     # 4. Drainage
-
     NewCond.th, DeepPerc, FluxOut = drainage(
         Soil.Profile,
         NewCond.th,
@@ -475,7 +475,7 @@ def solution_single_time_step(
 
     # Water fluxes
     # print(f'Saving NewCond.z_gw to outputs: {NewCond.z_gw}')
-    outputs.water_flux[row_day, :] = [
+    outputs.water_flux.loc[row_day] = [
         clock_struct.time_step_counter,
         clock_struct.season_counter,
         NewCond.dap,
@@ -492,6 +492,7 @@ def solution_single_time_step(
         EsPot,
         Tr,
         TrPot,
+        sum(NewCond.th)
     ]
 
     # Crop growth
