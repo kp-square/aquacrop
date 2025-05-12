@@ -30,6 +30,7 @@ from ..solution.root_development import root_development
 from ..solution.infiltration import infiltration
 from ..solution.HIref_current_day import HIref_current_day
 from ..solution.biomass_accumulation import biomass_accumulation
+from ..utils.richards.plots import plot_crop_simulation_data
 
 from typing import Tuple, TYPE_CHECKING
 
@@ -159,6 +160,7 @@ def solution_single_time_step(
     NewCond.et0 = weather_step[3]
 
     crop = Crop_
+    total_water = sum(NewCond.th * Soil.profile.dz) * 1000
 
     # Run simulations %%
     # 1. Check for groundwater table
@@ -483,6 +485,7 @@ def solution_single_time_step(
         NewCond.z_gw,
         NewCond.surface_storage,
         IrrDay,
+        precipitation,
         Infl,
         Runoff,
         DeepPerc,
@@ -492,8 +495,13 @@ def solution_single_time_step(
         EsPot,
         Tr,
         TrPot,
-        sum(NewCond.th)
+        total_water,
+        total_water - Es - Tr - DeepPerc + Infl
     ]
+
+    if row_day == 174:
+        desc = outputs.water_flux.describe()
+        plot_crop_simulation_data(outputs.water_flux, 'actual_aquacrop.png')
 
     # Crop growth
     outputs.crop_growth[row_day, :] = [

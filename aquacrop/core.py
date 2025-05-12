@@ -38,6 +38,8 @@ from .initialize.read_weather_inputs import read_weather_inputs
 from .timestep.check_if_model_is_finished import check_model_is_finished
 from .timestep.run_single_timestep import solution_single_time_step
 from .timestep.run_single_timestep_richards import solution_single_time_step_richards
+from .timestep.run_single_timestep_richards_daily import solution_single_time_step_richards_daily
+from .timestep.run_single_timestep_richards_hybrid import  solution_single_time_step_richards_hybrid
 from .timestep.update_time import update_time
 from .timestep.outputs_when_model_is_finished import outputs_when_model_is_finished
 
@@ -105,7 +107,8 @@ class AquaCropModel:
         groundwater: Optional["GroundWater"] = None,
         co2_concentration: Optional["CO2"] = None,
         off_season: bool = False,
-        step_size: str = 'D'
+        step_size: str = 'D',
+        use_richards: bool = False
     ) -> None:
 
         self.sim_start_time = sim_start_time
@@ -122,6 +125,7 @@ class AquaCropModel:
         self.field_management = field_management
         self.fallow_field_management = fallow_field_management
         self.groundwater = groundwater
+        self.use_richards = use_richards
 
         if irrigation_management is None:
             self.irrigation_management = IrrigationManagement(irrigation_method=0)
@@ -350,6 +354,22 @@ class AquaCropModel:
         # Get model solution_single_time_step
         if self.step_size == 'h':
             new_cond, param_struct, outputs = solution_single_time_step_richards(
+                self._init_cond,
+                self._param_struct,
+                self._clock_struct,
+                weather_step,
+                self._outputs,
+            )
+        # elif self.use_richards and self.step_size == 'd':
+        #     new_cond, param_struct, outputs = solution_single_time_step_richards_daily(
+        #         self._init_cond,
+        #         self._param_struct,
+        #         self._clock_struct,
+        #         weather_step,
+        #         self._outputs,
+        #     )
+        elif self.use_richards and self.step_size == 'd':
+            new_cond, param_struct, outputs = solution_single_time_step_richards_hybrid(
                 self._init_cond,
                 self._param_struct,
                 self._clock_struct,

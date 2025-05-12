@@ -32,11 +32,21 @@ def C(psi, pars):
     denom = (1 + (pars['alpha'] * np.abs(psi))**(pars['n']))**(pars['m']+1)
     return -(pars['thetaS'] - pars['thetaR']) * nume/denom * psi/(np.abs(psi)+1e-10)
 
+# def K(psi,pars):
+#     '''Compute hydraulic conductivity via the Mualem model'''
+#     Se=(1+(psi*-pars['alpha'])**pars['n'])**(-pars['m'])
+#     Se[psi>0.]=1.0
+#     return pars['Ks']*Se**pars['neta']*(1-(1-Se**(1/pars['m']))**pars['m'])**2
+
 def K(psi,pars):
-    '''Compute hydraulic conductivity via the Mualem model'''
-    Se=(1+(psi*-pars['alpha'])**pars['n'])**(-pars['m'])
-    Se[psi>0.]=1.0
-    return pars['Ks']*Se**pars['neta']*(1-(1-Se**(1/pars['m']))**pars['m'])**2
+    alpha = pars['alpha']
+    n = pars['n']
+    m = pars['m']
+    Se = (1 + (-psi*alpha)**n)**(-m)
+    nume = (1 - (alpha * (-psi))**(n-1)* Se )**2
+    denom = (1 + (alpha * (-psi))**n )**(m/2)
+    val = (nume/denom) * pars['Ks']
+    return val.values
 
 def simulate_rainfall(step):
   """Simulates rainfall for a given hour.

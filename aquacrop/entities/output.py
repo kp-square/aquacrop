@@ -46,6 +46,7 @@ class Output:
                 'z_ground_water',
                 'surface_storage',
                 'IrrDay',
+                'precipitation',
                 'Infl',
                 'Runoff',
                 'DeepPerc',
@@ -55,6 +56,7 @@ class Output:
                 'EsPot',
                 'Tr',
                 'TrPot',
-                'RootZoneWater'
+                'RootZoneWater',
+                'balance'
             ]
         )
