@@ -233,15 +233,32 @@ def solution_single_time_step_richards_hybrid(
         Runoff,
     )
 
-    DeepPerc, Runoff, Infl = 0.0, 0.0, 0.0
+    Runoff_CN, Infl, NewCond.day_submerged = rainfall_partition(
+        precipitation,
+        NewCond.th,
+        NewCond.day_submerged,
+        FieldMngt.sr_inhb,
+        FieldMngt.bunds,
+        FieldMngt.z_bund,
+        FieldMngt.curve_number_adj_pct,
+        Soil.cn,
+        Soil.adj_cn,
+        Soil.z_cn,
+        Soil.nComp,
+        Soil.Profile,
+    )
+
+    DeepPerc, Runoff, Infl = 0.0, Runoff_CN/1000, Infl
     solverd = RichardEquationSolver(Soil.profile, NewCond, time_step='d')
-    converged, new_th, _DeepPerc, _Runoff, _Infl, FluxOut = solverd.solve_daily(NewCond, Irr, precipitation)
+    converged, new_th, _DeepPerc, _Runoff, _Infl, FluxOut = solverd.solve_daily(NewCond, Irr, Infl)
     if converged:
         NewCond.th = new_th
         DeepPerc = _DeepPerc
-        Runoff = _Runoff
+        Runoff += _Runoff
         Infl = _Infl
     else:
+        Runoff = 0.0
+        Infl = 0.0
         solverh = RichardEquationSolver(Soil.profile, NewCond, time_step='h')
         hourly_rainfall = nrcs_type2_hourly_dissociation(precipitation)
         hourly_irrigation = irrigation_dissociation(Irr)
@@ -503,7 +520,7 @@ def solution_single_time_step_richards_hybrid(
     print('Day: ', row_day)
     if row_day == 174:
         desc = outputs.water_flux.describe()
-        plot_crop_simulation_data(outputs.water_flux, 'hybrid_plot.png')
+        plot_crop_simulation_data(outputs.water_flux, f'hybrid_plot.png')
 
     # Final output (if at end of growing season)
     if clock_struct.season_counter > -1:

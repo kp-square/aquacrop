@@ -51,14 +51,15 @@ def K(psi,pars):
     val = (nume/denom) * pars['Ks']
     return val
 
-max_iter = 100  # maximum possible picard iterations
+max_iter = 50  # maximum possible picard iterations
 
 
 
 
 # https://agupubs.onlinelibrary.wiley.com/doi/epdf/10.1029/WR011i001p00102
-def calculate_top_flux_infiltration(R, h_current, pars, dz):
+def calculate_top_flux_infiltration(R, h_current, pars, dz, Ft, theta_val):
     """
+    Based on Green Ampt Equation
     Args:
         R: rainfall
         h_current: matric potential of soil layers
@@ -70,9 +71,13 @@ def calculate_top_flux_infiltration(R, h_current, pars, dz):
     """
 
     Ks = pars['Ks'][0]
+    del_theta = pars['thetaS'][0] - theta_val
     h0 = h_current[0] # measured at center of top compartment
-    zc = dz/2.0 # 50cm
-    rc = max(0, (-h0 / zc + 1) * Ks)
+    # zc = dz/2.0 # 50cm
+    if Ft == 0:
+        Ft = 1e-6
+    ft = Ks * (1 - h0 * del_theta / Ft)
+    rc = max(0, ft)
     if R < rc:
         infiltration = R
     else:
@@ -204,6 +209,7 @@ class RichardEquationSolver:
         self.C_val = np.zeros((self.Nz, self.Nt))
         self.tolerance = 1e-10
         self.prev_cond = prev_cond
+        self.Infiltration_So_Far = 0.0
 
 
     def solve(self, step, new_cond, irrigation, rainfall):
@@ -244,7 +250,7 @@ class RichardEquationSolver:
             #     runoff = apply_top_bc(A, b, R, h_current, K_current, dz, pars, iter)
             # else:
             #     runoff = 0.0
-            flux, runoff = calculate_top_flux_infiltration(R, h_current, self.pars, self.dz[0])
+            flux, runoff = calculate_top_flux_infiltration(R, h_current, self.pars, self.dz[0], self.Infiltration_So_Far, theta_current[0])
             b[0] += (flux / self.dz[0])  # downward positive flux
             Infl = flux * self.dt
             h_new = spsolve(csc_matrix(A), b)
@@ -255,39 +261,44 @@ class RichardEquationSolver:
             max_diff = np.max(np.abs(h_new - h_current))
             if max_diff < self.tolerance:
                 converged = True
-                break
 
             if max(h_new) > -1e-10:
-                factor = 0.6
-                h_current = h_new * factor + h_current * (1 - factor)
+                factor = 0.95
+                h_current = h_new #* factor + h_current * (1 - factor)
             else:
                 h_current = h_new
 
-            if h_current[0] > 0.0:
-                break
+            if max(h_current) >= 0.0:
+                if self.time_step == 'm':
+                    h_current[h_current > 0.0] = 0.0
+                    print('No Convergence')
+                    converged = True
+                else:
+                    break
 
             theta_current = thetaf(h_current, self.pars)
             K_current = K(h_current, self.pars)
             C_current = C(h_current, self.pars)
+            if converged:
+                break
 
         # update theta/K/C
 
         deep_percolation = 0.0
-        if not converged:
+        if self.time_step != 's' and not converged:
             runoff = 0.0
             Infl = 0.0
-            if self.time_step == 'd':
-                solver = RichardEquationSolver(self.soil_profile, self.prev_cond, time_step='h')
             if self.time_step == 'h':
                 solver = RichardEquationSolver(self.soil_profile, self.prev_cond, time_step='m')
             elif self.time_step == 'm':
                 solver = RichardEquationSolver(self.soil_profile, self.prev_cond, time_step='s')
             for _step in range(solver.Nt):
                 converged, theta_current, _deep_perc, _runoff, _infl, K_current, C_current, h_current = solver.solve(_step, new_cond, irrigation/60.0, rainfall/60.0)
+                new_cond.th = theta_current
                 runoff += _runoff
                 Infl += _infl
                 deep_percolation += _deep_perc
-
+        self.Infiltration_So_Far += Infl
         self.theta_val[:, step] = theta_current
         self.K_val[:, step] = K_current
         self.C_val[:, step] = C_current
@@ -296,6 +307,8 @@ class RichardEquationSolver:
         # calculate deep percolation
         if converged:
             q_bottom, deep_percolation = compute_deep_percolation(K_current.values, self.dt)
+        if not converged:
+            runoff += R
         self.deep_percolation_val[step] = deep_percolation
 
         new_theta = self.theta_val[:, step].flatten()
@@ -339,7 +352,7 @@ class RichardEquationSolver:
             # else:
             #     runoff = 0.0
 
-            flux, runoff = calculate_top_flux_infiltration(R, h_current, self.pars, self.dz[0])
+            flux, runoff = calculate_top_flux_infiltration(R, h_current, self.pars, self.dz[0], self.Infiltration_So_Far, theta_current[0])
             b[0] += (flux / self.dz[0])  # downward positive flux
             Infl = flux * self.dt
             h_new = spsolve(csc_matrix(A), b)
@@ -364,7 +377,7 @@ class RichardEquationSolver:
             else:
                 h_current = h_new
 
-            if h_current[0] > 0.0:
+            if max(h_current) > 0.0:
                 break
 
             theta_current = thetaf(h_current, self.pars)
