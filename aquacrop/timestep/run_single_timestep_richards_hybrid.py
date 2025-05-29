@@ -341,7 +341,6 @@ def solution_single_time_step_richards_hybrid(
         Irr,
         growing_season,
     )
-    prev_th_evp = sum(NewCond.th * Soil.profile.dz)*1000
 
     # 13. Crop transpiration
     Tr, TrPot_NS, TrPot, NewCond, IrrNet = transpiration(
@@ -357,8 +356,6 @@ def solution_single_time_step_richards_hybrid(
         growing_season,
         gdd,
     )
-
-    prev_th_tr = sum(NewCond.th * Soil.profile.dz) * 1000
 
     # 8. Capillary Rise
     NewCond, CR = capillary_rise(
@@ -496,7 +493,7 @@ def solution_single_time_step_richards_hybrid(
         Tr,
         TrPot,
         total_water,
-        total_water - Es - Tr - (DeepPerc*1000) + (Infl*1000)
+        (Infl*1000) - Es - Tr - (DeepPerc*1000)
     ]
 
     # Crop growth

@@ -32,6 +32,7 @@ from ..solution.root_development import root_development
 from ..solution.infiltration import infiltration
 from ..solution.HIref_current_day import HIref_current_day
 from ..solution.biomass_accumulation import biomass_accumulation
+from ..utils.richards.plots import plot_crop_simulation_data
 
 from typing import Tuple, TYPE_CHECKING
 
@@ -44,7 +45,7 @@ if TYPE_CHECKING:
     from aquacrop.entities.output import Output
     from aquacrop.entities.crop import Crop
 
-from ..utils.richards.richards_eqn_solver import  RichardEquationSolver
+from ..utils.richards.richards_eqn_solver import RichardEquationSolver
 def solution_single_time_step_richards(
     init_cond: "InitialCondition",
     param_struct: "ParamStruct",
@@ -163,6 +164,7 @@ def solution_single_time_step_richards(
     NewCond.et0 = et0
 
     crop = Crop_
+    total_water = sum(NewCond.th * Soil.profile.dz) * 1000
 
     # Run simulations %%
     # 1. Check for groundwater table (Run once daily before hourly loop)
@@ -255,9 +257,10 @@ def solution_single_time_step_richards(
     Infl = 0.0
     Irr = 0.0
 
-    solver = RichardEquationSolver(Soil.profile, PrevCond)
+    solver = RichardEquationSolver(Soil.profile, PrevCond, time_step='h')
     # --- Hourly Loop --- #
     for hour in range(24):
+        prev = sum(NewCond.th * Soil.profile.dz) * 1000
         et0_hr = et0[hour]
         precipitation_hr = precipitation[hour]
         '''
@@ -387,11 +390,18 @@ def solution_single_time_step_richards(
         Es_daily += Es
         EsPot_daily += EsPot
         # NewCond.th has the volumetric water content for each compartment
-        NewCond, DeepPerc, Runoff, Infl, FluxOut = solver.solve(hour, NewCond, Irr, precipitation_hr)
 
-        DeepPerc_daily += DeepPerc*1000 #converting to mm
-        Runoff_daily += Runoff*1000 #converting to mm
-        Infl_daily += Infl*1000 #converting to mm
+        converged, new_th, DeepPerc, Runoff, Infl, FluxOut, _, _ = solver.solve(hour, NewCond,
+                                                                                    Irr,
+                                                                                    precipitation_hr)
+        nxt = sum(new_th * Soil.profile.dz) * 1000
+        bal = prev + Infl*1000 - DeepPerc *1000 - Es - TrAct_ - nxt
+        if converged:
+            NewCond.th = new_th
+            DeepPerc_daily += DeepPerc*1000
+            Runoff_daily += Runoff*1000
+            Infl_daily += Infl*1000
+
 
     NewCond = transpiration_post_daily(NewCond, Tr_daily, TrPot_daily, growing_season)
 
@@ -513,6 +523,7 @@ def solution_single_time_step_richards(
         NewCond.z_gw,
         NewCond.surface_storage,
         IrrDay,
+        sum(precipitation),
         Infl_daily,
         Runoff_daily,
         DeepPerc_daily,
@@ -522,8 +533,13 @@ def solution_single_time_step_richards(
         EsPot_daily,
         Tr_daily,
         TrPot_daily,
-        sum(NewCond.th)
+        total_water,
+        Infl_daily - Es_daily - Tr_daily - DeepPerc_daily
     ]
+
+    if row_day == 174:
+        desc = outputs.water_flux.describe()
+        plot_crop_simulation_data(outputs.water_flux, f'hourly_sim_plot.png')
 
     # Crop growth
     outputs.crop_growth[row_day, :] = [

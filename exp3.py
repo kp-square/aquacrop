@@ -14,6 +14,6 @@ model_os = AquaCropModel(
         )
 model_os.run_model(till_termination=True)
 model_results = model_os.get_simulation_results().head()
-model_results.to_csv('results4.csv')
+model_results.to_csv('results3.csv')
 print(type(model_results))
 print(model_results)

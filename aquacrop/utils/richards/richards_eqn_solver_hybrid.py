@@ -289,9 +289,9 @@ class RichardEquationSolver:
             runoff = 0.0
             Infl = 0.0
             if self.time_step == 'h':
-                solver = RichardEquationSolver(self.soil_profile, self.prev_cond, time_step='m')
+                solver = RichardEquationSolver(self.soil_profile, new_cond, time_step='m')
             elif self.time_step == 'm':
-                solver = RichardEquationSolver(self.soil_profile, self.prev_cond, time_step='s')
+                solver = RichardEquationSolver(self.soil_profile, new_cond, time_step='s')
             for _step in range(solver.Nt):
                 converged, theta_current, _deep_perc, _runoff, _infl, K_current, C_current, h_current = solver.solve(_step, new_cond, irrigation/60.0, rainfall/60.0)
                 new_cond.th = theta_current

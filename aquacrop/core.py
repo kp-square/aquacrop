@@ -38,7 +38,6 @@ from .initialize.read_weather_inputs import read_weather_inputs
 from .timestep.check_if_model_is_finished import check_model_is_finished
 from .timestep.run_single_timestep import solution_single_time_step
 from .timestep.run_single_timestep_richards import solution_single_time_step_richards
-from .timestep.run_single_timestep_richards_daily import solution_single_time_step_richards_daily
 from .timestep.run_single_timestep_richards_hybrid import  solution_single_time_step_richards_hybrid
 from .timestep.update_time import update_time
 from .timestep.outputs_when_model_is_finished import outputs_when_model_is_finished

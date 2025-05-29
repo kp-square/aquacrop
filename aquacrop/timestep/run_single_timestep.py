@@ -496,7 +496,7 @@ def solution_single_time_step(
         Tr,
         TrPot,
         total_water,
-        total_water - Es - Tr - DeepPerc + Infl
+        Infl - Es - Tr - DeepPerc
     ]
 
     if row_day == 174:
