@@ -130,4 +130,4 @@ def calculate_soil_hydraulic_properties( Sand, Clay, OrgMat, DF=1):
 
     return th_wp, th_fc, th_s, Ksat
 
-print(calculate_soil_hydraulic_properties(0.82, 0.07, 0.01))
+print(calculate_soil_hydraulic_properties(0.88, 0.06, 0.01))

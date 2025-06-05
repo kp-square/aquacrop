@@ -44,7 +44,7 @@ def run_simulation(args):
 
         irr_sch = expobj.irr[['DATE', 'irr_depth']]
         desc = irr_sch.isna().sum()
-        irr_sch.rename({'DATE': 'Date', 'irr_depth': 'Depth'}, axis=1, inplace=True)
+        irr_sch = irr_sch.rename({'DATE': 'Date', 'irr_depth': 'Depth'}, axis=1)
         irrmethod = IrrigationManagement(irrigation_method=3, Schedule=irr_sch)
 
         dzz = []
@@ -52,10 +52,12 @@ def run_simulation(args):
         prev = 0.0
         for typ in expobj.soil_types:
             typ.depth = round(typ.depth, 2)
+            if not typ.soil_type:
+                typ.soil_type = 'Loamy Fine Sand'
             splits = typ.soil_type.split(' ')
             splits = [x.capitalize() for x in splits]
             typ.soil_type = ''.join(splits)
-            typ.soil_type = 'SandyClayLoam' if typ.soil_type.lower() == 'SadnyClayLoam' else typ.soil_type
+            typ.soil_type = 'SandyClayLoam' if typ.soil_type == 'SadnyClayLoam' else typ.soil_type
             dzz.append(round(typ.depth - prev, 2))
             soil_types.append(typ.soil_type)
             prev = typ.depth
@@ -68,7 +70,7 @@ def run_simulation(args):
         soil = Soil(soil_type=soil_types, dz=dzz)
         step_size = 'H' if args.hourly else 'D'
 
-        crop_type = 'Maize' if args.crop_type == 'corn' else args.crop_type
+        crop_type = 'Maize' if args.crop_type == 'corn' else args.crop_type.capitalize()
         model_os = AquaCropModel(
             sim_start_time=f'{start_date.year}/{start_date.month}/{start_date.day}',
             sim_end_time=f'{end_date.year}/{end_date.month}/{end_date.day}',
@@ -84,9 +86,8 @@ def run_simulation(args):
         model_os.run_model(till_termination=True)
         model_results_df = model_os.get_simulation_results()
         simulated_yield = model_results_df['Dry yield (tonne/ha)'].iloc[0]
-        # sq_err = (simulated_yield_obj.value - expobj.lint_yield)**2
-        with open('results.txt', 'a') as file:
-            file.write(f'{args.run_count}\t{args.crop_type}\t{simulated_yield}\t{expobj.lint_yield}')
+        sq_err = (simulated_yield - expobj.lint_yield)**2
+        return sq_err
 
 def str_to_bool(value: str) -> bool:
     """Converts a string representation of truth to True or False."""

@@ -169,6 +169,13 @@ class Soil:
                 self.rew = 5
             self.add_layer(sum(dz), 0.08, 0.16, 0.38, 2200, 100, 0.057, 12.4, 2.28, 0.5)
 
+        elif soil_type == "FineSand":
+            if first_layer:
+                self.cn = 46
+                self.calc_cn = 0
+                self.rew = 5
+            self.add_layer(sum(dz), 0.07, 0.15, 0.404, 2300, 100, 0.050, 13.1, 2.38, 0.5)
+
         elif soil_type == "Sand":
             if first_layer:
                 self.cn = 46
