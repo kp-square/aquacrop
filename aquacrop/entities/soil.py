@@ -106,117 +106,126 @@ class Soil:
             z_top, dz[0]
         )  # Thickness of soil surface layer for water stress comparisons (m)
 
-        if soil_type == "custom":
-            self.create_df(dz)
+        self.create_df(dz)
 
-        elif soil_type == "Clay":
-            self.cn = 77
-            self.calc_cn = 0
-            self.rew = 14
-            self.create_df(dz)
+        if isinstance(soil_type, list):
+            first_layer = True
+            for i, typ in enumerate(soil_type):
+                self.addSoilLayer(typ, [dz[i]], first_layer)
+                first_layer = False
+        else:
+            if soil_type == "custom":
+                pass
+            elif soil_type == "Paddy":
+                self.cn = 77
+                self.calc_cn = 0
+                self.rew = 10
+                self.add_layer(0.5, 0.32, 0.50, 0.54, 15, 100)
+                self.add_layer(1.5, 0.39, 0.54, 0.55, 2, 100)
+
+            elif soil_type == "ac_TunisLocal":
+                self.cn = 72
+                self.calc_cn = 0
+                self.rew = 11
+                dz = [0.1] * 6 + [0.15] * 5 + [0.2]
+                self.create_df(dz)
+                self.add_layer(0.3, 0.24, 0.40, 0.50, 155, 100)
+                self.add_layer(1.7, 0.11, 0.33, 0.46, 500, 100)
+            else:
+                self.addSoilLayer(soil_type, dz)
+
+    def addSoilLayer(self, soil_type, dz, first_layer=True):
+        if soil_type == "Clay":
+            if first_layer:
+                self.cn = 77
+                self.calc_cn = 0
+                self.rew = 14
             self.add_layer(sum(dz), 0.39, 0.54, 0.38, 48, 100, 0.068, 0.8, 1.09, 0.5)
 
         elif soil_type == "ClayLoam":
-            self.cn = 72
-            self.calc_cn = 0
-            self.rew = 11
-            self.create_df(dz)
+            if first_layer:
+                self.cn = 72
+                self.calc_cn = 0
+                self.rew = 11
             self.add_layer(sum(dz), 0.23, 0.39, 0.41, 62.4, 100, 0.095, 1.9, 1.31, 0.5)
 
         elif soil_type == 'Default':
-            self.cn = 61
-            self.calc_cn = 0
-            self.rew = 9
-            self.create_df(dz)
+            if first_layer:
+                self.cn = 61
+                self.calc_cn = 0
+                self.rew = 9
             self.add_layer(sum(dz), 0.1, 0.3, 0.5, 1060.8, 100, 0.065, 7.5, 1.89, 0.5)
 
         elif soil_type == "Loam":
-            self.cn = 61
-            self.calc_cn = 0
-            self.rew = 9
-            self.create_df(dz)
+            if first_layer:
+                self.cn = 61
+                self.calc_cn = 0
+                self.rew = 9
             self.add_layer(sum(dz), 0.15, 0.31, 0.46, 500, 100, 0.078, 3.6, 1.56, 0.5)
 
         elif soil_type == "LoamySand":
-            self.cn = 46
-            self.calc_cn = 0
-            self.rew = 5
-            self.create_df(dz)
+            if first_layer:
+                self.cn = 46
+                self.calc_cn = 0
+                self.rew = 5
             self.add_layer(sum(dz), 0.08, 0.16, 0.38, 2200, 100, 0.057, 12.4, 2.28, 0.5)
 
         elif soil_type == "Sand":
-            self.cn = 46
-            self.calc_cn = 0
-            self.rew = 4
-            self.create_df(dz)
+            if first_layer:
+                self.cn = 46
+                self.calc_cn = 0
+                self.rew = 4
             self.add_layer(sum(dz), 0.06, 0.13, 0.36, 3000, 100, 0.045, 14.5, 2.68, 0.5)
 
         elif soil_type == "SandyClay":
-            self.cn = 77
-            self.calc_cn = 0
-            self.rew = 10
-            self.create_df(dz)
+            if first_layer:
+                self.cn = 77
+                self.calc_cn = 0
+                self.rew = 10
             self.add_layer(sum(dz), 0.27, 0.39, 0.38, 28.8, 100, 0.1, 2.7, 1.23, 0.5)
 
         elif soil_type == "SandyClayLoam":
-            self.cn = 72
-            self.calc_cn = 0
-            self.rew = 9
-            self.create_df(dz)
+            if first_layer:
+                self.cn = 72
+                self.calc_cn = 0
+                self.rew = 9
             self.add_layer(sum(dz), 0.20, 0.32, 0.47, 225, 100, 0.1, 5.9, 1.48, 0.5)
 
         elif soil_type == "SandyLoam":
-            self.cn = 46
-            self.calc_cn = 0
-            self.rew = 7
-            self.create_df(dz)
+            if first_layer:
+                self.cn = 46
+                self.calc_cn = 0
+                self.rew = 7
             self.add_layer(sum(dz), 0.10, 0.22, 0.41, 1200, 100, 0.065, 7.5, 1.89, 0.5)
 
         elif soil_type == "Silt":
-            self.cn = 61
-            self.calc_cn = 0
-            self.rew = 11
-            self.create_df(dz)
+            if first_layer:
+                self.cn = 61
+                self.calc_cn = 0
+                self.rew = 11
             self.add_layer(sum(dz), 0.09, 0.33, 0.43, 60, 100, 0.034, 1.6, 1.37, 0.5)
 
         elif soil_type == "SiltClayLoam":
-            self.cn = 72
-            self.calc_cn = 0
-            self.rew = 13
-            self.create_df(dz)
+            if first_layer:
+                self.cn = 72
+                self.calc_cn = 0
+                self.rew = 13
             self.add_layer(sum(dz), 0.23, 0.44, 0.52, 16.8, 100, 0.089, 1.0, 1.23,  0.5)
 
         elif soil_type == "SiltLoam":
-            self.cn = 61
-            self.calc_cn = 0
-            self.rew = 11
-            self.create_df(dz)
+            if first_layer:
+                self.cn = 61
+                self.calc_cn = 0
+                self.rew = 11
             self.add_layer(sum(dz), 0.13, 0.33, 0.46, 575, 100, 0.067, 2.0, 1.41, 0.5)
 
         elif soil_type == "SiltClay":
-            self.cn = 72
-            self.calc_cn = 0
-            self.rew = 14
-            self.create_df(dz)
+            if first_layer:
+                self.cn = 72
+                self.calc_cn = 0
+                self.rew = 14
             self.add_layer(sum(dz), 0.32, 0.50, 0.54, 100, 100, 0.070, 0.5, 1.09, 0.5)
 
-        elif soil_type == "Paddy":
-            self.cn = 77
-            self.calc_cn = 0
-            self.rew = 10
-            self.create_df(dz)
-            self.add_layer(0.5, 0.32, 0.50, 0.54, 15, 100)
-            self.add_layer(1.5, 0.39, 0.54, 0.55, 2, 100)
-
-        elif soil_type == "ac_TunisLocal":
-            self.cn = 72
-            self.calc_cn = 0
-            self.rew = 11
-            dz = [0.1] * 6 + [0.15] * 5 + [0.2]
-            self.create_df(dz)
-            self.add_layer(0.3, 0.24, 0.40, 0.50, 155, 100)
-            self.add_layer(1.7, 0.11, 0.33, 0.46, 500, 100)
- 
         else:
             print("wrong soil type")
             assert 1 == 2

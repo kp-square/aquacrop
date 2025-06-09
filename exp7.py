@@ -52,13 +52,11 @@ soil = Soil(soil_type=soil_types, dz=dzz)
 model_os = AquaCropModel(
             sim_start_time=f'{start_date.year}/{start_date.month}/{start_date.day}',
             sim_end_time=f'{end_date.year}/{end_date.month}/{end_date.day}',
-            weather_df=prepare_weather(weather_file_path, hourly=True),
-            soil=soil,
+            weather_df=prepare_weather(weather_file_path),
+            soil=Soil(soil_type='LoamySand'),
             crop=Crop('Maize', planting_date=f'{start_date.month}/{start_date.day}'),
             initial_water_content=InitialWaterContent(value=['FC']),
-            irrigation_management = irrmethod,
-            step_size='H',
-            use_richards=True
+            irrigation_management = irrmethod
         )
 
 model_os.run_model(till_termination=True)
