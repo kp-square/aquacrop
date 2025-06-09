@@ -2581,6 +2581,21 @@ crop_params={'Barley': {'Aer': 15.0,
   'p_up2': 0.50,
   'p_up3': 0.50,
   'p_up4': 0.90},
-
+'Peanut': {
+  "CGC": 0.008,
+  "CCx": 0.85,
+  "Kcb": 1.10,
+  "WP": 15.0,
+  "Tmin_lo": 10.0,
+  "Tmin_up": 24.0,
+  "Tmax_up": 30.0,
+  "Tmax_lo": 36.0,
+  "HI0": 0.45,
+  "Zmin": 0.05,
+  "Zmax": 1.35,
+  "EmergenceCD": 10,
+  "FloweringCD": 40,
+  "MaturityCD": 145
+},
 
   }

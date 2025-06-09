@@ -3,6 +3,7 @@ from aquacrop.utils import prepare_weather, get_filepath
 from dataset.dataobjects import SoilType, ExpData
 import pickle
 from datetime import datetime, timezone, timedelta
+import time
 
 
 '''
@@ -46,15 +47,25 @@ for typ in expobj.soil_types:
     soil_types.append(typ.soil_type)
     prev = typ.depth
 
+# Make at least 10 layers of soil, extend the last layer
+while len(dzz) < 10:
+    dzz.append(dzz[-1])
+    soil_types.append(soil_types[-1])
+
 soil = Soil(soil_type=soil_types, dz=dzz)
 
-
+# calibrate these parameters to match the actual yield
+# run 54 parallel jobs with same value of WP and HI0, collect the results, calculate MSE and then run again for modified values of WP and HIO
+# run to minimize the MSE error.
+WP = 33.7
+HI0 = 0.48
+start_time = time.time()
 model_os = AquaCropModel(
             sim_start_time=f'{start_date.year}/{start_date.month}/{start_date.day}',
             sim_end_time=f'{end_date.year}/{end_date.month}/{end_date.day}',
             weather_df=prepare_weather(weather_file_path, hourly=True),
             soil=soil,
-            crop=Crop('Maize', planting_date=f'{start_date.month}/{start_date.day}'),
+            crop=Crop('Maize', planting_date=f'{start_date.month}/{start_date.day}', WP=WP, HI0 = HI0),
             initial_water_content=InitialWaterContent(value=['FC']),
             irrigation_management = irrmethod,
             step_size='H',
@@ -67,3 +78,4 @@ model_results = model_os.get_simulation_results().head()
 print(type(model_results))
 print(model_results)
 print('Actual Yield : ', expobj.lint_yield)
+print(f'Time Taken: {time.time() - start_time}s')

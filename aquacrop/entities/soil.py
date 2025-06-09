@@ -170,6 +170,13 @@ class Soil:
                 self.rew = 5
             self.add_layer(sum(dz), 0.08, 0.16, 0.38, 2200, 100, 0.057, 12.4, 2.28, 0.5)
 
+        elif soil_type == "FineSand":
+            if first_layer:
+                self.cn = 46
+                self.calc_cn = 0
+                self.rew = 5
+            self.add_layer(sum(dz), 0.07, 0.15, 0.404, 2300, 100, 0.050, 13.1, 2.38, 0.5)
+
         elif soil_type == "Sand":
             if first_layer:
                 self.cn = 46
@@ -197,6 +204,13 @@ class Soil:
                 self.calc_cn = 0
                 self.rew = 7
             self.add_layer(sum(dz), 0.10, 0.22, 0.41, 1200, 100, 0.065, 7.5, 1.89, 0.5)
+
+        elif soil_type == "LoamyFineSand":
+            if first_layer:
+                self.cn = 46
+                self.calc_cn = 0
+                self.rew = 6
+            self.add_layer(sum(dz), 0.07, 0.15, 0.394, 1535, 100, 0.043, 10.5, 1.95, 0.5)
 
         elif soil_type == "Silt":
             if first_layer:
@@ -367,7 +381,7 @@ class Soil:
         else:
             last = self.profile[self.profile.Layer == new_layer - 1].dzsum.values[-1]
             self.profile.loc[
-                (thickness + last >= self.profile.dzsum) & (self.profile.Layer.isna()),
+                (round(thickness + last,2) >= round(self.profile.dzsum,2)) & (self.profile.Layer.isna()),
                 "Layer",
             ] = new_layer
 
