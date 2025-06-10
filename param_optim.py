@@ -1,6 +1,6 @@
 import numpy as np
 
-from simulation_script import run_simulation
+from simulation_script import run_simulation_and_get_yield_error
 import types
 import pandas as pd
 from concurrent.futures import ProcessPoolExecutor
@@ -37,8 +37,9 @@ def hp_optimizer(crop_type, years, wp_range, hi0_range, hourly, use_richards):
     return best_params['wp'], best_params['hi0'], best_error
 
 def run_processes(crop_type, years, wp, hi0, run_count, hourly, use_richards):
+    # number of cores = 18
     df = pd.read_csv('crop_metadata.csv')
-    df_filter = df[(df['crop_type'] == crop_type) & (df['year'].isin(years))][:8]
+    df_filter = df[(df['crop_type'] == crop_type) & (df['year'].isin(years))]
     allargs = []
     for _, row in df_filter.iterrows():
         args = {}
@@ -54,7 +55,7 @@ def run_processes(crop_type, years, wp, hi0, run_count, hourly, use_richards):
         allargs.append(types.SimpleNamespace(**args))
     sq_errors = []
     with ProcessPoolExecutor() as executor:
-        for err in executor.map(run_simulation, allargs):
+        for err in executor.map(run_simulation_and_get_yield_error, allargs):
             sq_errors.append(err)
     return np.mean(sq_errors)
 

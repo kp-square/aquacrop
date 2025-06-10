@@ -35,6 +35,13 @@ class Output:
                 "Fresh yield (tonne/ha)",
                 "Yield potential (tonne/ha)",
                 "Seasonal irrigation (mm)",
+                "Seasonal rainfall (mm)",
+                "Evaporation (mm)",
+                "Transpiration (mm)",
+                "Deep Percolation (mm)",
+                "Runoff (mm)",
+                "Seasonal Infiltration (mm)",
+                "Balance (mm)"
             ]
         )
         self.water_flux = pd.DataFrame(
@@ -60,3 +67,5 @@ class Output:
                 'balance'
             ]
         )
+        self.instates = []
+        self.outstates =  []

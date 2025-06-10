@@ -74,7 +74,7 @@ def prepare_gdd(weather_df, sim_start, sim_end, gdd, crop, sum_fun):
         'Senescence', 'Maturity', 'HIstart', 'HIend', 'YieldFormation'
     ]
     if crop.CropType == 3:
-        growth_stages.extend(['FloweringEnd', 'FloweringDuration'])
+        growth_stages.extend(['FloweringEnd', 'Flowering'])
 
     # Create dictionary of lists to store yearly GDD values for each growth stage
     # i.e. create as many lists as there are elements in 'growth_stages',
@@ -103,7 +103,7 @@ def prepare_gdd(weather_df, sim_start, sim_end, gdd, crop, sum_fun):
         gdd_lists['Maturity'].append(gdd_cum.iloc[int(crop.MaturityCD)])
         gdd_lists['HIstart'].append(gdd_cum.iloc[int(crop.HIstartCD)])
         gdd_lists['HIend'].append(gdd_cum.iloc[int(crop.HIendCD)])
-        gdd_lists['YieldFormation'].append(crop.HIend - crop.HIstart)
+        gdd_lists['YieldFormation'].append(gdd_cum.iloc[int(crop.HIendCD)] - gdd_cum.iloc[int(crop.HIstartCD)])
 
         # Duration of flowering (gdd's) - (fruit/grain crops only)
         if crop.CropType == 3:
@@ -111,7 +111,7 @@ def prepare_gdd(weather_df, sim_start, sim_end, gdd, crop, sum_fun):
             # gdd's from sowing to end of flowering
             gdd_lists['FloweringEnd'].append(flowering_end)
             # Duration of flowering (gdd's)
-            gdd_lists['FloweringDuration'].append(flowering_end - crop.HIstart)
+            gdd_lists['Flowering'].append(flowering_end - gdd_cum.iloc[int(crop.HIstartCD)])
 
     # calculate mean/median of GDD growth stages using dictionary logic,
     # set the attribute to update the crop object

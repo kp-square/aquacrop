@@ -66,7 +66,7 @@ model_os = AquaCropModel(
             weather_df=prepare_weather(weather_file_path, hourly=True),
             soil=soil,
             crop=Crop('Maize', planting_date=f'{start_date.month}/{start_date.day}', WP=WP, HI0 = HI0),
-            initial_water_content=InitialWaterContent(value=['FC']),
+            initial_water_content=InitialWaterContent(value=['FC']*len(soil.profile.Layer), depth_layer=soil.profile.Layer),
             irrigation_management = irrmethod,
             step_size='H',
             use_richards=True

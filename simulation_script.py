@@ -69,14 +69,20 @@ def run_simulation(args):
 
         soil = Soil(soil_type=soil_types, dz=dzz)
         step_size = 'H' if args.hourly else 'D'
-
+        # source: https://open.clemson.edu/cgi/viewcontent.cgi?article=2297&context=all_theses
+        cotton_params = {'CGC_CD':0.10, 'CDC_CD':0.029, 'CCx':0.98, 'Kcb':1.1, 'Zx':1.2, 'WP':15, 'HI0':0.30, 'EmergenceCD':3, 'SenescenceCD': 100, 'MaturityCD': 160, 'FloweringCD':42, 'Tbase':15.6, 'SwitchGDD':1}
+        # I may need to test for corn later
+        # source: https://extension.missouri.edu/media/wysiwyg/Extensiondata/CountyPages/Scott/Irrigation/Estimated-Water-Use-Corn-Georgia.pdf
+        # source: https://www.sciencedirect.com/science/article/pii/S0378377418317128?casa_token=3li4XZy-0EIAAAAA:sz1Z1SeThgCzLiVUpZ6JqB0Le_b9ipfAZsexuLDjgHRmyLZi9jzQUP-HvFvriLw1TZioBxnjHA
+        corn_params = {'CCx':0.94, 'Zx':2.1, 'CGC_CD':0.137, 'Kcb':1.05, 'HI0':0.52, 'WP':31.7, 'p_up1':0.14, 'p_lo1':0.72, 'EmergenceCD':7, 'MaxRootingCD':79, 'SenescenceCD':105, 'Tbase':10, 'MaturityCD':122, 'FloweringCD':15, "HIstartCD":80, 'YldFormCD':35, 'SwitchGDD':1}
+        params = {'cotton': cotton_params, 'corn': corn_params}
         crop_type = 'Maize' if args.crop_type == 'corn' else args.crop_type.capitalize()
         model_os = AquaCropModel(
             sim_start_time=f'{start_date.year}/{start_date.month}/{start_date.day}',
             sim_end_time=f'{end_date.year}/{end_date.month}/{end_date.day}',
             weather_df=prepare_weather(weather_file_path, hourly = args.hourly),
             soil=soil,
-            crop=Crop(crop_type, planting_date=f'{start_date.month}/{start_date.day}', WP=args.WP, HI0=args.HI0),
+            crop=Crop(crop_type, planting_date=f'{start_date.month}/{start_date.day}', **params[args.crop_type]),
             initial_water_content=InitialWaterContent(value=['FC']*soil.nComp, method="Layer", depth_layer=soil.profile.Layer),
             irrigation_management=irrmethod,
             step_size=step_size,
@@ -85,9 +91,37 @@ def run_simulation(args):
 
         model_os.run_model(till_termination=True)
         model_results_df = model_os.get_simulation_results()
-        simulated_yield = model_results_df['Dry yield (tonne/ha)'].iloc[0]
-        sq_err = (simulated_yield - expobj.lint_yield)**2
-        return sq_err
+        return model_results_df, expobj
+
+
+def run_simulation_and_get_balance(args):
+    model_results_df, expobj = run_simulation(args)
+    result  = {}
+    result['irr'] = model_results_df["Seasonal irrigation (mm)"].iloc[0]
+    result['rain'] = model_results_df["Seasonal rainfall (mm)"].iloc[0]
+    result['es'] = model_results_df["Evaporation (mm)"].iloc[0]
+    result['tr'] = model_results_df["Transpiration (mm)"].iloc[0]
+    result['dp'] = model_results_df["Deep Percolation (mm)"].iloc[0]
+    result['runoff'] = model_results_df["Runoff (mm)"].iloc[0]
+    result['infl'] = model_results_df["Seasonal Infiltration (mm)"].iloc[0]
+    result['balance'] = model_results_df["Balance (mm)"].iloc[0]
+    result['sim_yield'] = model_results_df["Dry yield (tonne/ha)"].iloc[0]
+    result['actual_yield'] = expobj.lint_yield
+    result['year'] = expobj.year
+    result['crop'] = expobj.crop_type
+    result['sirp_id'] = expobj.sirp_id
+    result['treatment_id'] = expobj.treatment_id
+    result['irr_method'] = expobj.fert_method
+    for key in result.keys():
+        if isinstance(result[key], float):
+            result[key] = round(result[key], 2)
+    return result
+
+def run_simulation_and_get_yield_error(args):
+    model_results_df, expobj = run_simulation(args)
+    simulated_yield = model_results_df['Dry yield (tonne/ha)'].iloc[0]
+    sq_err = (simulated_yield - expobj.lint_yield) ** 2
+    return sq_err
 
 def str_to_bool(value: str) -> bool:
     """Converts a string representation of truth to True or False."""

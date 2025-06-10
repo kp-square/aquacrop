@@ -1,6 +1,7 @@
 import numpy as np
 import copy
 from aquacrop.entities.output import Output
+import pickle
 
 # TEMP FOR TROUBLESHOOTING:
 from pprint import pprint
@@ -34,6 +35,7 @@ from ..solution.HIref_current_day import HIref_current_day
 from ..solution.biomass_accumulation import biomass_accumulation
 from ..utils.richards.plots import plot_crop_simulation_data
 from ..utils.richards.richards_utils import irrigation_dissociation
+from ..optim.dataobjects import InputState, OutputState
 
 from typing import Tuple, TYPE_CHECKING
 
@@ -167,7 +169,7 @@ def solution_single_time_step_richards(
 
     crop = Crop_
     total_water_begin = sum(NewCond.th * Soil.profile.dz) * 1000
-
+    init_root_z = NewCond.z_root
     # Run simulations %%
     # 1. Check for groundwater table (Run once daily before hourly loop)
     NewCond.th_fc_Adj, NewCond.wt_in_soil, NewCond.z_gw = check_groundwater_table(
@@ -266,6 +268,7 @@ def solution_single_time_step_richards(
         Runoff
     )
 
+
     # Initialize daily accumulators
 
     Tr_daily = 0
@@ -281,13 +284,14 @@ def solution_single_time_step_richards(
 
     # Store the state at the beginning of the day (start of the hourly loop)
     PrevCond = copy.deepcopy(NewCond)
+    instate = InputState(precipitation, et0, temp_min, temp_max, NewCond.gdd, NewCond.dap, init_root_z, NewCond.canopy_cover, NewCond.th, NewCond.biomass)
+
 
     Infl = 0.0
     hourly_irrigation = irrigation_dissociation(Irr)
     solver = RichardEquationSolver(Soil.profile, PrevCond, time_step='h')
     # --- Hourly Loop --- #
     for hour in range(24):
-        prev = sum(NewCond.th * Soil.profile.dz) * 1000
         et0_hr = et0[hour]
         precipitation_hr = precipitation[hour]
         '''
@@ -502,6 +506,12 @@ def solution_single_time_step_richards(
         NewCond.depletion = _water_root_depletion.Rz
         NewCond.taw = _TAW.Rz
 
+    outstate = OutputState(NewCond.canopy_cover - PrevCond.canopy_cover, NewCond.z_root - init_root_z, Es_daily, Tr_daily,
+                           NewCond.biomass - PrevCond.biomass, NewCond.DryYield - PrevCond.DryYield,
+                           NewCond.th - PrevCond.th, DeepPerc_daily, Runoff_daily)
+
+    outputs.instates.append(instate)
+    outputs.outstates.append(outstate)
     # Water contents
     outputs.water_storage[row_day, :3] = np.array(
         [clock_struct.time_step_counter, growing_season, NewCond.dap]
@@ -538,9 +548,9 @@ def solution_single_time_step_richards(
         total_water_begin + Infl_daily - Es_daily - Tr_daily - DeepPerc_daily - total_water_end
     ]
 
-    if row_day == 174:
-        desc = outputs.water_flux.describe()
-        plot_crop_simulation_data(outputs.water_flux, f'hourly_sim_plot.png')
+    # if row_day == 174:
+    #     desc = outputs.water_flux.describe()
+    #     plot_crop_simulation_data(outputs.water_flux, f'hourly_sim_plot.png')
 
     # Crop growth
     outputs.crop_growth[row_day, :] = [
@@ -572,6 +582,16 @@ def solution_single_time_step_richards(
             )
         ) and (NewCond.harvest_flag is False):
             desc = outputs.water_flux.describe()
+
+            total_rainfall = outputs.water_flux['precipitation'].sum()
+            total_infl = outputs.water_flux['Infl'].sum()
+            total_runoff = outputs.water_flux['Runoff'].sum()
+            total_irr = outputs.water_flux['IrrDay'].sum()
+            total_es = outputs.water_flux['Es'].sum()
+            total_tr  = outputs.water_flux['Tr'].sum()
+            total_dp = outputs.water_flux['DeepPerc'].sum()
+            total_err = outputs.water_flux['balance'].abs().sum()
+
             # Store final outputs
             outputs.final_stats.loc[row_gs] = [
                 clock_struct.season_counter,
@@ -582,7 +602,22 @@ def solution_single_time_step_richards(
                 NewCond.FreshYield,
                 NewCond.YieldPot,
                 IrrTot,
+                total_rainfall,
+                total_es,
+                total_tr,
+                total_dp,
+                total_runoff,
+                total_infl,
+                total_err
             ]
+            # try:
+            #     with open('aquacrop/optim/train_data.pkl', 'wb') as f:
+            #         obj = (instate, outstate)
+            #         pickle.dump((hash(obj), obj), f)
+            # except:
+            #     print('error')
+
+
 
             # Set harvest flag
             NewCond.harvest_flag = True
