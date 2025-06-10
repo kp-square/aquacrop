@@ -85,6 +85,7 @@ def solution_single_time_step(
 
     # Store initial conditions in structure for updating %%
     NewCond = init_cond
+    total_water_start = sum(NewCond.th * Soil.profile.dz) * 1000
     if param_struct.water_table == 1:
         GroundWater = param_struct.z_gw[clock_struct.time_step_counter]
     else:
@@ -477,6 +478,7 @@ def solution_single_time_step(
 
     # Water fluxes
     # print(f'Saving NewCond.z_gw to outputs: {NewCond.z_gw}')
+    total_water_end = sum(NewCond.th * Soil.profile.dz) * 1000
     outputs.water_flux.loc[row_day] = [
         clock_struct.time_step_counter,
         clock_struct.season_counter,
@@ -496,7 +498,7 @@ def solution_single_time_step(
         Tr,
         TrPot,
         total_water,
-        Infl - Es - Tr - DeepPerc
+        total_water_start + Infl - Es - Tr - DeepPerc - total_water_end
     ]
 
     if row_day == 174:
@@ -534,6 +536,15 @@ def solution_single_time_step(
         ) and (NewCond.harvest_flag is False):
 
             # Store final outputs
+            total_rainfall = outputs.water_flux['precipitation'].sum()
+            total_infl = outputs.water_flux['Infl'].sum()
+            total_runoff = outputs.water_flux['Runoff'].sum()
+            total_irr = outputs.water_flux['IrrDay'].sum()
+            total_es = outputs.water_flux['Es'].sum()
+            total_tr = outputs.water_flux['Tr'].sum()
+            total_dp = outputs.water_flux['DeepPerc'].sum()
+            total_err = outputs.water_flux['balance'].abs().sum()
+
             outputs.final_stats.loc[row_gs] = [
                 clock_struct.season_counter,
                 Crop_Name,
@@ -543,6 +554,13 @@ def solution_single_time_step(
                 NewCond.FreshYield,
                 NewCond.YieldPot,
                 IrrTot,
+                total_rainfall,
+                total_es,
+                total_tr,
+                total_dp,
+                total_runoff,
+                total_infl,
+                total_err
             ]
 
             # Set harvest flag

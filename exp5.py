@@ -1,7 +1,7 @@
 from aquacrop import AquaCropModel, Soil, Crop, InitialWaterContent
 from aquacrop.utils import prepare_weather, get_filepath
 
-weather_file_path = get_filepath('atlanta_climate_hourly.txt')
+weather_file_path = get_filepath('georgia_climate_hourly.txt')
 
 model_os = AquaCropModel(
             sim_start_time=f"{2021}/04/30",

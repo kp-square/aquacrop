@@ -1,6 +1,6 @@
 import numpy as np
 import copy
-
+import pickle
 from aquacrop.entities.output import Output
 
 # TEMP FOR TROUBLESHOOTING:
@@ -35,8 +35,7 @@ from ..utils.richards.richards_eqn_solver_hybrid import  RichardEquationSolver
 from ..utils.richards.richards_utils import nrcs_type2_hourly_dissociation
 from ..utils.richards.richards_utils import irrigation_dissociation
 from ..utils.richards.plots import plot_crop_simulation_data
-
-
+from ..optim.dataobjects import InputState, OutputState
 from typing import Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -165,7 +164,9 @@ def solution_single_time_step_richards_hybrid(
     NewCond.et0 = weather_step[3]
 
     crop = Crop_
-    total_water = sum(NewCond.th * Soil.profile.dz) * 1000
+    total_water_begin = sum(NewCond.th * Soil.profile.dz) * 1000
+    init_root_z = NewCond.z_root
+    PrevCond = copy.deepcopy(NewCond)
     # Run simulations %%
     # 1. Check for groundwater table
     # fc : field capacity, fc_Adj : adjusted field capacity, th : theta (volumetric water content), z_gw: groundwater depth
@@ -247,6 +248,8 @@ def solution_single_time_step_richards_hybrid(
         Soil.nComp,
         Soil.Profile,
     )
+
+    instate = InputState(precipitation, et0, temp_min, temp_max, NewCond.gdd, NewCond.dap, init_root_z, NewCond.canopy_cover, NewCond.th, NewCond.biomass)
 
     DeepPerc, Runoff, Infl = 0.0, Runoff_CN/1000, Infl
     solverd = RichardEquationSolver(Soil.profile, NewCond, time_step='d')
@@ -474,6 +477,7 @@ def solution_single_time_step_richards_hybrid(
 
     # Water fluxes
     # print(f'Saving NewCond.z_gw to outputs: {NewCond.z_gw}')
+    total_water_end = sum(NewCond.th * Soil.profile.dz) * 1000
     outputs.water_flux.loc[row_day] = [
         clock_struct.time_step_counter,
         clock_struct.season_counter,
@@ -492,9 +496,12 @@ def solution_single_time_step_richards_hybrid(
         EsPot,
         Tr,
         TrPot,
-        total_water,
-        (Infl*1000) - Es - Tr - (DeepPerc*1000)
+        total_water_begin,
+        total_water_begin + (Infl*1000) - Es - Tr - (DeepPerc*1000) - total_water_end
     ]
+    outstate = OutputState(NewCond.canopy_cover - PrevCond.canopy_cover, NewCond.z_root-init_root_z, Es, Tr, NewCond.biomass-PrevCond.biomass, NewCond.DryYield-PrevCond.DryYield, NewCond.th-PrevCond.th, DeepPerc*1000, Runoff)
+    outputs.instates.append(instate)
+    outputs.outstates.append(outstate)
 
     # Crop growth
     outputs.crop_growth[row_day, :] = [
@@ -531,6 +538,16 @@ def solution_single_time_step_richards_hybrid(
         ) and (NewCond.harvest_flag is False):
 
             # Store final outputs
+
+            total_rainfall = outputs.water_flux['precipitation'].sum()
+            total_infl = outputs.water_flux['Infl'].sum()
+            total_runoff = outputs.water_flux['Runoff'].sum()
+            total_irr = outputs.water_flux['IrrDay'].sum()
+            total_es = outputs.water_flux['Es'].sum()
+            total_tr = outputs.water_flux['Tr'].sum()
+            total_dp = outputs.water_flux['DeepPerc'].sum()
+            total_err = outputs.water_flux['balance'].abs().sum()
+
             outputs.final_stats.loc[row_gs] = [
                 clock_struct.season_counter,
                 Crop_Name,
@@ -540,6 +557,13 @@ def solution_single_time_step_richards_hybrid(
                 NewCond.FreshYield,
                 NewCond.YieldPot,
                 IrrTot,
+                total_rainfall,
+                total_es,
+                total_tr,
+                total_dp,
+                total_runoff,
+                total_infl,
+                total_err
             ]
 
             # Set harvest flag
