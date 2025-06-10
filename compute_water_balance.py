@@ -68,6 +68,6 @@ def main():
     compute_balance_process(hourly, use_richards)
 
 if __name__=='__main__':
-    #compute_balance_process(False, False)
-    main()
+    compute_balance_process(True, True)
+    #main()
 
