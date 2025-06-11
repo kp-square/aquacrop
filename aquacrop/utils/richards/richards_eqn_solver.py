@@ -35,21 +35,21 @@ def C(psi, pars):
     denom = (1 + (pars['alpha'] * np.abs(psi))**(pars['n']))**(pars['m']+1)
     return np.array(-(pars['thetaS'] - pars['thetaR']) * nume/denom * psi/(np.abs(psi)+1e-10))
 
-# def K(psi,pars):
-#     '''Compute hydraulic conductivity via the Mualem model'''
-#     Se=(1+(psi*-pars['alpha'])**pars['n'])**(-pars['m'])
-#     Se[psi>0.]=1.0
-#     return np.array(pars['Ks']*Se**pars['neta']*(1-(1-Se**(1/pars['m']))**pars['m'])**2)
-
 def K(psi,pars):
-    alpha = pars['alpha']
-    n = pars['n']
-    m = pars['m']
-    Se = (1 + (-psi*alpha)**n)**(-m)
-    nume = (1 - (alpha * (-psi))**(n-1)* Se )**2
-    denom = (1 + (alpha * (-psi))**n )**(m/2)
-    val = (nume/denom) * pars['Ks']
-    return val
+    '''Compute hydraulic conductivity via the Mualem model'''
+    Se=(1+(psi*-pars['alpha'])**pars['n'])**(-pars['m'])
+    Se[psi>0.]=1.0
+    return np.array(pars['Ks']*Se**pars['neta']*(1-(1-Se**(1/pars['m']))**pars['m'])**2)
+
+# def K(psi,pars):
+#     alpha = pars['alpha']
+#     n = pars['n']
+#     m = pars['m']
+#     Se = (1 + (-psi*alpha)**n)**(-m)
+#     nume = (1 - (alpha * (-psi))**(n-1)* Se )**2
+#     denom = (1 + (alpha * (-psi))**n )**(m/2)
+#     val = (nume/denom) * pars['Ks']
+#     return val
 
 max_iter = 50  # maximum possible picard iterations
 
@@ -242,13 +242,13 @@ class RichardEquationSolver:
             self.C_val[:, step] = C_current
 
             # first layer is bit complicated as we need to set up boundary condition.
-            K_half = mean(K_current[:-1].values, K_current[1:].values, self.dz.values)
+            K_half = mean(K_current[:-1], K_current[1:], self.dz.values)
             # K_half = 2 / (1/K_step[:-1] + 1/K_step[1:])
 
             # if there's rainfall or irrigation, updated h_current
 
             A, b = assemble_system(K_half, C_current, theta_prev, theta_current, h_current, self.dz, self.dt, K_current[0],
-                                   K_current.values[-1], diff_water_content)
+                                   K_current[-1], diff_water_content)
 
             # if R != 0:
             #     runoff = apply_top_bc(A, b, R, h_current, K_current, dz, pars, iter)
@@ -310,7 +310,7 @@ class RichardEquationSolver:
         self.psi[:, step] = h_current
         # calculate deep percolation
         if converged:
-            q_bottom, deep_percolation = compute_deep_percolation(K_current.values, self.dt)
+            q_bottom, deep_percolation = compute_deep_percolation(K_current, self.dt)
         if not converged:
             runoff += R
         self.deep_percolation_val[step] = deep_percolation
@@ -343,13 +343,13 @@ class RichardEquationSolver:
 
             #K_step = self.K_val[:, step]
             # first layer is bit complicated as we need to set up boundary condition.
-            K_half = mean(K_current[:-1].values, K_current[1:].values, self.dz.values)
+            K_half = mean(K_current[:-1], K_current[1:], self.dz.values)
             # K_half = 2 / (1/K_step[:-1] + 1/K_step[1:])
 
             # if there's rainfall or irrigation, updated h_current
 
             A, b = assemble_system(K_half, C_current, theta_prev, theta_current, h_current, self.dz, self.dt, K_current[0],
-                                   K_current.values[-1], diff_water_content, iter, R)
+                                   K_current[-1], diff_water_content, iter, R)
 
             # if R != 0:
             #     runoff = apply_top_bc(A, b, R, h_current, K_current, dz, pars, iter)
@@ -389,7 +389,7 @@ class RichardEquationSolver:
             C_current = C(h_current, self.pars)
 
         # calculate deep percolation
-        q_bottom, deep_percolation = compute_deep_percolation(K_current.values, self.dt)
+        q_bottom, deep_percolation = compute_deep_percolation(K_current, self.dt)
         #self.deep_percolation_val[step] = deep_percolation
 
         new_theta = theta_current.flatten()#self.theta_val[:, step].flatten()

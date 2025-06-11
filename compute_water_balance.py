@@ -12,9 +12,9 @@ import argparse
 def compute_balance_process( hourly, use_richards):
     # no. of cores  = 54
     df = pd.read_csv('crop_metadata.csv')
-    df_filter = df[(df['crop_type'] != 'peanut')]
+    # df_filter = df[(df['crop_type'] != 'peanut')]
     # df_filter = df[(df['crop_type'] == 'cotton') & (df['sirp_id'] == 217) & (df['treatment_id'] == 3)]
-    # df_filter = df[(df['crop_type'] == 'corn') & (df['sirp_id'] == 118) & (df['treatment_id'] == 2)]
+    df_filter = df[(df['crop_type'] == 'corn') & (df['sirp_id'] == 314) & (df['treatment_id'] == 2)]
     wp = {'corn': 27.0, 'cotton':0.48}
     hi0 = {'corn': 12.0, 'cotton':0.27}
     allargs = []
