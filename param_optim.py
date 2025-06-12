@@ -11,7 +11,7 @@ import argparse
 
 def hp_optimizer(crop_type, years, wp_range, hi0_range, hourly, use_richards):
     #optimize wp, hi0 with minimum average error obtained from run_processes
-    n_trials = 10
+    n_trials = 100
     def objective(trial):
         wp = trial.suggest_float('wp', wp_range[0], wp_range[1])
         hi0 = trial.suggest_float('hi0', hi0_range[0], hi0_range[1])
@@ -76,15 +76,15 @@ def main():
     if crop_type == 'cotton':
         all_years = [2019, 2020, 2021]
         wp_range = (8.0, 20.0)
-        hi_range = (0.20, 0.35)
+        hi0_range = (0.20, 0.35)
     else:
         all_years = [2018, 2019, 2020]
         wp_range = (20.0, 35.0)
-        hi_range = (0.45, 0.65)
+        hi0_range = (0.45, 0.65)
     assert (test_year in all_years)
     train_years = [y for y in all_years if y != test_year]
     test_years = [test_year]
-    wp, hi, best_error = hp_optimizer(crop_type, train_years, wp_range, hi_range, hourly, use_richards)
+    wp, hi, best_error = hp_optimizer(crop_type, train_years, wp_range, hi0_range, hourly, use_richards)
     test_err = run_processes(crop_type, test_years, wp, hi, 1, hourly, use_richards)
     if hourly and use_richards: model_name = 'Hourly_Richards_Aquacrop'
     elif not hourly and use_richards: model_name = 'Daily_Richards_Aquacrop'
@@ -94,6 +94,6 @@ def main():
 
 
 if __name__=='__main__':
-    run_processes('corn', [2018], 12, 0.47, 1, True, True)
-    # main()
+    # run_processes('corn', [2018], 12, 0.47, 1, True, True)
+    main()
 
