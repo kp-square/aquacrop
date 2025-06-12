@@ -521,7 +521,6 @@ def solution_single_time_step_richards_hybrid(
         NewCond.FreshYield,
         NewCond.YieldPot,
     ]
-    print('Day: ', row_day)
     if row_day == 174:
         desc = outputs.water_flux.describe()
         plot_crop_simulation_data(outputs.water_flux, f'hybrid_plot.png')

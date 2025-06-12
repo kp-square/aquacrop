@@ -487,7 +487,6 @@ def solution_single_time_step_richards(
     # Update model outputs %%
     row_day = clock_struct.time_step_counter
     row_gs = clock_struct.season_counter
-    print(row_day)
     # Irrigation
     if growing_season is True:
         if IrrMngt.irrigation_method == 4:
