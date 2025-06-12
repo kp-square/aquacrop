@@ -70,11 +70,11 @@ def run_simulation(args):
         soil = Soil(soil_type=soil_types, dz=dzz)
         step_size = 'H' if args.hourly else 'D'
         # source: https://open.clemson.edu/cgi/viewcontent.cgi?article=2297&context=all_theses
-        cotton_params = {'CGC_CD':0.10, 'CDC_CD':0.029, 'CCx':0.98, 'Kcb':1.1, 'Zx':1.2, 'WP':15, 'HI0':0.30, 'EmergenceCD':3, 'SenescenceCD': 100, 'MaturityCD': 160, 'FloweringCD':42, 'Tbase':15.6, 'SwitchGDD':1}
+        cotton_params = {'CGC_CD':0.10, 'CDC_CD':0.029, 'CCx':0.98, 'Kcb':1.1, 'Zx':1.2, 'WP':args.WP, 'HI0':args.HI0, 'EmergenceCD':3, 'SenescenceCD': 100, 'MaturityCD': 160, 'FloweringCD':42, 'Tbase':15.6, 'SwitchGDD':1}
         # I may need to test for corn later
         # source: https://extension.missouri.edu/media/wysiwyg/Extensiondata/CountyPages/Scott/Irrigation/Estimated-Water-Use-Corn-Georgia.pdf
         # source: https://www.sciencedirect.com/science/article/pii/S0378377418317128?casa_token=3li4XZy-0EIAAAAA:sz1Z1SeThgCzLiVUpZ6JqB0Le_b9ipfAZsexuLDjgHRmyLZi9jzQUP-HvFvriLw1TZioBxnjHA
-        corn_params = {'CCx':0.94, 'Zx':2.1, 'CGC_CD':0.137, 'Kcb':1.05, 'HI0':0.52, 'WP':31.7, 'p_up1':0.14, 'p_lo1':0.72, 'EmergenceCD':7, 'MaxRootingCD':79, 'SenescenceCD':105, 'Tbase':10, 'MaturityCD':122, 'FloweringCD':15, "HIstartCD":80, 'YldFormCD':35, 'SwitchGDD':1}
+        corn_params = {'CCx':0.94, 'Zx':2.1, 'CGC_CD':0.137, 'Kcb':1.05, 'HI0':args.HI0, 'WP':args.WP, 'p_up1':0.14, 'p_lo1':0.72, 'EmergenceCD':7, 'MaxRootingCD':79, 'SenescenceCD':105, 'Tbase':10, 'MaturityCD':122, 'FloweringCD':15, "HIstartCD":80, 'YldFormCD':35, 'SwitchGDD':1}
         params = {'cotton': cotton_params, 'corn': corn_params}
         crop_type = 'Maize' if args.crop_type == 'corn' else args.crop_type.capitalize()
         model_os = AquaCropModel(
