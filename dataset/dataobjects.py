@@ -9,12 +9,12 @@ class SoilType:
 
 
 class ExpData:
-    def __init__(self, treatment_id, sirp_id, crop_type, year, irr_method, fert_method, lint_yield, start_date, end_date, irr):
+    def __init__(self, treatment_id, sirp_id, crop_type, year, irr_method, fert_method, crop_yield, start_date, end_date, irr):
         self.crop_type = crop_type
         self.year = year
         self.irr_method = irr_method
         self.fert_method = fert_method
-        self.lint_yield = lint_yield
+        self.crop_yield = crop_yield
         self.irr = irr # dataframe
         self.treatment_id = treatment_id
         self.start_date = start_date

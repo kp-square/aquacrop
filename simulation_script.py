@@ -10,12 +10,12 @@ import time
 
 '''
 class ExpData:
-    def __init__(self, treatment_id, sirp_id, crop_type, year, irr_method, fert_method, lint_yield, start_date, end_date, irr):
+    def __init__(self, treatment_id, sirp_id, crop_type, year, irr_method, fert_method, crop_yield, start_date, end_date, irr):
         self.crop_type = crop_type
         self.year = year
         self.irr_method = irr_method
         self.fert_method = fert_method
-        self.lint_yield = lint_yield
+        self.crop_yield = crop_yield
         self.irr = irr # dataframe
         self.treatment_id = treatment_id
         self.start_date = start_date
@@ -106,7 +106,7 @@ def run_simulation_and_get_balance(args):
     result['infl'] = model_results_df["Seasonal Infiltration (mm)"].iloc[0]
     result['balance'] = model_results_df["Balance (mm)"].iloc[0]
     result['sim_yield'] = model_results_df["Dry yield (tonne/ha)"].iloc[0]
-    result['actual_yield'] = expobj.lint_yield
+    result['actual_yield'] = expobj.crop_yield
     result['year'] = expobj.year
     result['crop'] = expobj.crop_type
     result['sirp_id'] = expobj.sirp_id
@@ -120,7 +120,7 @@ def run_simulation_and_get_balance(args):
 def run_simulation_and_get_yield_error(args):
     model_results_df, expobj = run_simulation(args)
     simulated_yield = model_results_df['Dry yield (tonne/ha)'].iloc[0]
-    sq_err = (simulated_yield - expobj.lint_yield) ** 2
+    sq_err = (simulated_yield - expobj.crop_yield) ** 2
     return sq_err
 
 def str_to_bool(value: str) -> bool:

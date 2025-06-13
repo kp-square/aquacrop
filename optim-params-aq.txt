@@ -1,0 +1,6 @@
+cotton 2019 False False
+cotton 2020 False False
+cotton 2021 False False
+corn 2018 False False
+corn 2019 False False
+corn 2020 False False
