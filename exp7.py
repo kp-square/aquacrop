@@ -8,12 +8,12 @@ from datetime import datetime, timezone, timedelta
 '''
 
 class ExpData:
-    def __init__(self, treatment_id, sirp_id, crop_type, year, irr_method, fert_method, lint_yield, start_date, end_date, irr):
+    def __init__(self, treatment_id, sirp_id, crop_type, year, irr_method, fert_method, crop_yield, start_date, end_date, irr):
         self.crop_type = crop_type
         self.year = year
         self.irr_method = irr_method
         self.fert_method = fert_method
-        self.lint_yield = lint_yield
+        self.crop_yield = crop_yield
         self.irr = irr # dataframe
         self.treatment_id = treatment_id
         self.start_date = start_date
@@ -64,4 +64,4 @@ model_results = model_os.get_simulation_results().head()
 # model_results.to_csv('results6.csv')
 print(type(model_results))
 print(model_results)
-print('Actual Yield : ', expobj.lint_yield)
+print('Actual Yield : ', expobj.crop_yield)
