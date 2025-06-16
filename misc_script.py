@@ -38,7 +38,23 @@
 #         updated_script = slurm_script.format(row.get('crop_type'), row.get('year'), row.get('treatment_id'), row.get('sirp_id'), True, True, WP, HI0, run_count)
 #         os.execv('sbatch', updated_script)
 
+import pandas as pd
+import pickle
+
 import numpy as np
+from dataset.dataobjects import ExpData, SoilType
+
+def all_soil_types():
+    with open('dataset/experimental_data.pkl', 'rb') as f:
+        data = pickle.load(f)
+
+    alltypes = set()
+    for obj in data:
+        types = obj.soil_types
+        for typ in types:
+            alltypes.add(typ.soil_type)
+
+    print(list(alltypes))
 def calculate_soil_hydraulic_properties( Sand, Clay, OrgMat, DF=1):
     """
     Function to calculate soil hydraulic properties, given textural inputs.
@@ -130,4 +146,11 @@ def calculate_soil_hydraulic_properties( Sand, Clay, OrgMat, DF=1):
 
     return th_wp, th_fc, th_s, Ksat
 
-print(calculate_soil_hydraulic_properties(0.88, 0.06, 0.01))
+all_soil_types()
+print('th_wp', 'th_fc', 'th_s', 'Ksat')
+print('Loamy Sand', calculate_soil_hydraulic_properties(0.82, 0.08, 0.01))
+print('Sandy Loam', calculate_soil_hydraulic_properties(0.81, 0.13, 0.01))
+print('Sand', calculate_soil_hydraulic_properties(0.936, 0.024, 0.01))
+print('Sandy Clay Loam', calculate_soil_hydraulic_properties(0.71, 0.28, 0.01))
+print('Loamy Fine Sand', calculate_soil_hydraulic_properties(0.86, 0.06, 0.01))
+print('Fine Sand', calculate_soil_hydraulic_properties(0.89, 0.045, 0.01))
