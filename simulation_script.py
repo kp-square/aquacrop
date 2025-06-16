@@ -120,8 +120,10 @@ def run_simulation_and_get_balance(args):
 def run_simulation_and_get_yield_error(args):
     model_results_df, expobj = run_simulation(args)
     simulated_yield = model_results_df['Dry yield (tonne/ha)'].iloc[0]
-    sq_err = (simulated_yield - expobj.crop_yield) ** 2
-    return sq_err
+    abs_err = abs(simulated_yield - expobj.crop_yield)
+    sq_err = abs_err ** 2
+    perc_err = abs_err/expobj.crop_yield
+    return sq_err, perc_err
 
 def str_to_bool(value: str) -> bool:
     """Converts a string representation of truth to True or False."""

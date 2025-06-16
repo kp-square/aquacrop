@@ -17,8 +17,8 @@ def hp_optimizer(crop_type, years, wp_range, hi0_range, hourly, use_richards):
         hi0 = trial.suggest_float('hi0', hi0_range[0], hi0_range[1])
 
         try:
-            error = run_processes(crop_type, years, wp, hi0, trial.number, hourly, use_richards)
-            return error
+            sq_error, per_error = run_processes(crop_type, years, wp, hi0, trial.number, hourly, use_richards)
+            return sq_error
         except Exception as e:
             print(f'Error in trial {trial.number}: {e}')
             return float('inf')
@@ -35,7 +35,7 @@ def hp_optimizer(crop_type, years, wp_range, hi0_range, hourly, use_richards):
     best_params = study.best_params
     best_error = study.best_value
 
-    return best_params['wp'], best_params['hi0'], best_error
+    return best_params['wp'], best_params['hi0']
 
 def run_processes(crop_type, years, wp, hi0, run_count, hourly, use_richards):
     # number of cores = 18
@@ -55,10 +55,12 @@ def run_processes(crop_type, years, wp, hi0, run_count, hourly, use_richards):
         args['run_count'] = run_count
         allargs.append(types.SimpleNamespace(**args))
     sq_errors = []
+    perc_errors = []
     with ProcessPoolExecutor() as executor:
-        for err in executor.map(run_simulation_and_get_yield_error, allargs):
-            sq_errors.append(err)
-    return np.mean(sq_errors)
+        for sq_err, perc_err in executor.map(run_simulation_and_get_yield_error, allargs):
+            sq_errors.append(sq_err)
+            perc_errors.append(perc_err)
+    return np.mean(sq_errors), np.mean(perc_errors)
 
 
 def main():
@@ -75,22 +77,23 @@ def main():
     assert(crop_type in ['corn', 'cotton'])
     if crop_type == 'cotton':
         all_years = [2019, 2020, 2021]
-        wp_range = (8.0, 20.0)
-        hi0_range = (0.20, 0.35)
+        wp_range = (11.0, 16.0)
+        hi0_range = (0.20, 0.40)
     else:
         all_years = [2018, 2019, 2020]
-        wp_range = (20.0, 35.0)
-        hi0_range = (0.45, 0.65)
+        wp_range = (30.0, 40.0)
+        hi0_range = (0.40, 0.60)
     assert (test_year in all_years)
     train_years = [y for y in all_years if y != test_year]
     test_years = [test_year]
-    wp, hi, best_error = hp_optimizer(crop_type, train_years, wp_range, hi0_range, hourly, use_richards)
-    test_err = run_processes(crop_type, test_years, wp, hi, 1, hourly, use_richards)
+    wp, hi = hp_optimizer(crop_type, train_years, wp_range, hi0_range, hourly, use_richards)
+    train_sq_err, train_perc_err = run_processes(crop_type, train_years, wp, hi, 1, hourly, use_richards)
+    test_sq_err, test_perc_err = run_processes(crop_type, test_years, wp, hi, 1, hourly, use_richards)
     if hourly and use_richards: model_name = 'Hourly_Richards_Aquacrop'
     elif not hourly and use_richards: model_name = 'Daily_Richards_Aquacrop'
     else: model_name = 'Daily_Aquacrop'
-    with open(f'{model_name}_{test_year}_{crop_type}.txt', 'w') as file:
-        file.write(f'wp: {wp}, hi0: {hi}, test_err: {test_err}, train_error: {best_error}')
+    with open(f'results/{model_name}_{test_year}_{crop_type}.txt', 'w') as file:
+        file.write(f'wp: {wp}, hi0: {hi}, train_sq_err: {train_sq_err}, train_perc_err: {train_perc_err}, test_sq_err: {test_sq_err}, test_perc_err: {test_perc_err}')
 
 
 if __name__=='__main__':
