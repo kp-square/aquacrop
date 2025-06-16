@@ -4,7 +4,7 @@ import numpy as np
 from .modelConstants import ModelConstants
 
 
-class Soil:
+class SoilGeorgia:
     """
     The Soil Class contains Paramaters and variables of the soil used in the simulation
 

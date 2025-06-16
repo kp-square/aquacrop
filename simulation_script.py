@@ -1,7 +1,7 @@
 import argparse
 import types
 
-from aquacrop import AquaCropModel, Soil, Crop, InitialWaterContent, IrrigationManagement
+from aquacrop import AquaCropModel, SoilGeorgia, Crop, InitialWaterContent, IrrigationManagement
 from aquacrop.utils import prepare_weather, get_filepath
 from dataset.dataobjects import SoilType, ExpData
 import pickle
@@ -67,7 +67,7 @@ def run_simulation(args):
             dzz.append(dzz[-1])
             soil_types.append(soil_types[-1])
 
-        soil = Soil(soil_type=soil_types, dz=dzz)
+        soil = SoilGeorgia(soil_type=soil_types, dz=dzz)
         step_size = 'H' if args.hourly else 'D'
         # source: https://open.clemson.edu/cgi/viewcontent.cgi?article=2297&context=all_theses
         cotton_params = {'CGC_CD':0.10, 'CDC_CD':0.029, 'CCx':0.98, 'Kcb':1.1, 'Zx':1.2, 'WP':args.WP, 'HI0':args.HI0, 'EmergenceCD':3, 'SenescenceCD': 100, 'MaturityCD': 160, 'FloweringCD':42, 'Tbase':15.6, 'SwitchGDD':1}

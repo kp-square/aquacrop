@@ -2,6 +2,7 @@ import sys
 if not '-m' in sys.argv:
     from .core import AquaCropModel
     from .entities.soil import Soil
+    from .entities.soil_georgia import SoilGeorgia
     from .entities.crop import  Crop
     from .entities.inititalWaterContent import InitialWaterContent
     from .entities.irrigationManagement import IrrigationManagement
