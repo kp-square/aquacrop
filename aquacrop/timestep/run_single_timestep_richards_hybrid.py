@@ -31,7 +31,7 @@ from ..solution.root_development import root_development
 from ..solution.infiltration import infiltration
 from ..solution.HIref_current_day import HIref_current_day
 from ..solution.biomass_accumulation import biomass_accumulation
-from ..utils.richards.richards_eqn_solver_hybrid import  RichardEquationSolver
+from ..utils.richards.richards_eqn_solver_hybrid import RichardEquationSolver
 from ..utils.richards.richards_utils import nrcs_type2_hourly_dissociation
 from ..utils.richards.richards_utils import irrigation_dissociation
 from ..utils.richards.plots import plot_crop_simulation_data
@@ -252,7 +252,8 @@ def solution_single_time_step_richards_hybrid(
     instate = InputState(precipitation, et0, temp_min, temp_max, NewCond.gdd, NewCond.dap, init_root_z, NewCond.canopy_cover, NewCond.th, NewCond.biomass)
 
     DeepPerc, Runoff, Infl = 0.0, Runoff_CN/1000, Infl
-    solverd = RichardEquationSolver(Soil.profile, NewCond, time_step='d')
+    PrevCond = copy.deepcopy(NewCond)
+    solverd = RichardEquationSolver(Soil.profile, PrevCond, time_step='d')
     converged, new_th, _DeepPerc, _Runoff, _Infl, FluxOut = solverd.solve_daily(NewCond, Irr, Infl)
     if converged:
         NewCond.th = new_th
@@ -262,16 +263,16 @@ def solution_single_time_step_richards_hybrid(
     else:
         Runoff = 0.0
         Infl = 0.0
-        solverh = RichardEquationSolver(Soil.profile, NewCond, time_step='h')
+        PrevCond = copy.deepcopy(NewCond)
+        solverh = RichardEquationSolver(Soil.profile, PrevCond, time_step='h')
         hourly_rainfall = nrcs_type2_hourly_dissociation(precipitation)
         hourly_irrigation = irrigation_dissociation(Irr)
         for hour in range(0, 24):
             converged, new_th, _DeepPerc, _Runoff, _Infl, FluxOut, _, _ = solverh.solve(hour, NewCond, hourly_irrigation[hour], hourly_rainfall[hour])
-            if converged:
-                NewCond.th = new_th
-                DeepPerc += _DeepPerc
-                Runoff += _Runoff
-                Infl += _Infl
+            NewCond.th = new_th
+            DeepPerc += _DeepPerc
+            Runoff += _Runoff
+            Infl += _Infl
 
     # 9. Check germination
     NewCond = germination(
@@ -521,6 +522,7 @@ def solution_single_time_step_richards_hybrid(
         NewCond.FreshYield,
         NewCond.YieldPot,
     ]
+    print('Day:', row_day)
     if row_day == 174:
         desc = outputs.water_flux.describe()
         plot_crop_simulation_data(outputs.water_flux, f'hybrid_plot.png')
