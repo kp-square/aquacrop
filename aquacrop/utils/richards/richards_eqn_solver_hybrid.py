@@ -1,3 +1,4 @@
+import copy
 import math
 
 import numpy as np
@@ -20,7 +21,6 @@ def thetaf(psi,pars):
     Se[psi>0.]=1.0
     return np.array(pars['thetaR']+(pars['thetaS']-pars['thetaR'])*Se)
 
-
 def psi_fun(theta, pars):
     '''Compute matric potential from the volumetric water content'''
     pw1 = 1/pars['m']
@@ -40,7 +40,8 @@ def K(psi,pars):
     '''Compute hydraulic conductivity via the Mualem model'''
     Se=(1+(psi*-pars['alpha'])**pars['n'])**(-pars['m'])
     Se[psi>0.]=1.0
-    return np.array(pars['Ks']*Se**pars['neta']*(1-(1-Se**(1/pars['m']))**pars['m'])**2)
+    k_val = np.array(pars['Ks']*Se**pars['neta']*(1-(1-Se**(1/pars['m']))**pars['m'])**2)
+    return np.maximum(k_val, 1e-30)
 
 # def K(psi,pars):
 #     alpha = pars['alpha']
@@ -51,10 +52,6 @@ def K(psi,pars):
 #     denom = (1 + (alpha * (-psi))**n )**(m/2)
 #     val = (nume/denom) * pars['Ks']
 #     return val
-
-max_iter = 50  # maximum possible picard iterations
-
-
 
 
 # https://agupubs.onlinelibrary.wiley.com/doi/epdf/10.1029/WR011i001p00102
@@ -116,7 +113,17 @@ def mean(K_i, K_j, dz):
     weighted_mean = (K_i * (dz[1:]/2) + K_j * dz[:-1]/2) / ((dz[1:]+dz[:-1])*0.5)
     return weighted_mean
 
-def assemble_system(K_half, C_val, theta_prev, theta_curr, h_curr, dz, dt, K_top, K_bottom, diff_water, iter=0, R=0):
+def wieghted_geometric_mean(K_i, K_j, dz):
+    dist_i = dz[:-1]/2.0
+    dist_j = dz[1:]/2.0
+    total_dist = dist_i + dist_j
+    log_K_i = np.log(K_i)
+    log_K_j = np.log(K_j)
+    weighted_log_mean = (log_K_i * dist_j + log_K_j * dist_i) / total_dist
+    K_half = np.exp(weighted_log_mean)
+    return K_half
+
+def assemble_system(K_half, C_val, theta_prev, theta_curr, h_curr, dz, dt, K_bottom):
     '''
     K_half : Value of K at boundary of each soil compartments
     C_val: value of C at each compartment
@@ -180,7 +187,6 @@ class RichardEquationSolver:
         self.pars['neta'] = soil_profile.neta
         self.time_step = time_step.lower()
         self.soil_profile = soil_profile
-        self.prev_cond = prev_cond
         if self.time_step == 's':
             self.pars['Ks'] = (soil_profile.Ksat / 1000) / (24.0 * 60 * 60) # m/sec
             self.Nt = 60
@@ -209,115 +215,197 @@ class RichardEquationSolver:
         self.deep_percolation_val = np.zeros(self.Nt)
         self.K_val = np.zeros((self.Nz, self.Nt))
         self.C_val = np.zeros((self.Nz, self.Nt))
-        self.tolerance = 1e-10
-        self.prev_cond = prev_cond
+        self.tolerance = 1e-5
+        self.prev_cond = copy.deepcopy(prev_cond)
         self.Infiltration_So_Far = 0.0
-
+        self.max_iter = 20
 
     def solve(self, step, new_cond, irrigation, rainfall):
         # takes current hour as input
         # print(f'hour: {step}')
-        R = (rainfall + irrigation)/1000.0
-        if step > 0:
-            theta_prev = self.theta_val[:, step - 1]
-            h_current = self.psi[:, step - 1].copy()
-        else:
-            theta_prev = np.array(self.prev_cond.th)
+        R = (rainfall + irrigation) / 1000.0
+        # If soil is super dry, i.e. in any layer moisture is below theta_r don't proceed
+        self.tolerance = 1e-5
+        theta_prev = np.array(self.prev_cond.th)
+        theta_prev_prev = theta_prev.copy()
+        h_current = psi_fun(theta_prev, self.pars)
+        dry_soil = False
+        if any(np.array(self.prev_cond.th) < self.soil_profile.th_r):
+            dry_soil = True
+            self.tolerance = 1.0
+            epsilon = 1e-6
+            theta_prev = np.maximum(self.pars['thetaR'] + epsilon, self.prev_cond.th)
             h_current = psi_fun(theta_prev, self.pars)
+            # self.prev_cond.th = new_cond.th
 
         theta_current = thetaf(h_current, self.pars)
+        ref_prev_theta_current = theta_current.copy()
         K_current = K(h_current, self.pars)
         C_current = C(h_current, self.pars)
         Infl = 0.0
-        diff_water_content = new_cond.th - theta_prev
         converged = False
         # at each timestep, update the value of theta, K and C for each compartment
-        for iter in range(max_iter):
+        for iter in range(self.max_iter):
             # at each step of picard iteration
             # values at iter = m
-            self.theta_val[:, step] = thetaf(h_current, self.pars)
-            self.K_val[:, step] = K_current
-            self.C_val[:, step] = C_current
 
             # first layer is bit complicated as we need to set up boundary condition.
-            K_half = mean(K_current[:-1], K_current[1:], self.dz.values)
+            K_half = wieghted_geometric_mean(K_current[:-1], K_current[1:], self.dz.values)
             # K_half = 2 / (1/K_step[:-1] + 1/K_step[1:])
 
             # if there's rainfall or irrigation, updated h_current
 
-            A, b = assemble_system(K_half, C_current, theta_prev, theta_current, h_current, self.dz, self.dt, K_current[0],
-                                   K_current[-1], diff_water_content)
+            A, b = assemble_system(K_half, C_current, theta_prev, theta_current, h_current, self.dz, self.dt,
+                                   K_current[-1])
 
             # if R != 0:
             #     runoff = apply_top_bc(A, b, R, h_current, K_current, dz, pars, iter)
             # else:
             #     runoff = 0.0
-            flux, runoff = calculate_top_flux_infiltration(R, h_current, self.pars, self.dz[0], self.Infiltration_So_Far, theta_current[0])
+            flux, runoff = calculate_top_flux_infiltration(R, h_current, self.pars, self.dz[0],
+                                                           self.Infiltration_So_Far, theta_current[0])
             b[0] += (flux / self.dz[0])  # downward positive flux
             Infl = flux * self.dt
-            h_new = spsolve(csc_matrix(A), b)
+            try:
+                h_new = spsolve(csc_matrix(A), b)
+            except:
+                converged = False
+                break
             # Check convergence
             # if np.max(np.abs(h_new - h_current)) < tolerance:
             #     break
             # convergence check with relative tolerance
             max_diff = np.max(np.abs(h_new - h_current))
-            if max_diff > 2.0:
+
+            if (max(h_new) >= 0.0 or max_diff > 20.0) and self.time_step == 'h':
                 converged = False
+                dry_soil = False
                 break
+
             if max_diff < self.tolerance:
                 converged = True
 
-
             if max(h_new) > -1e-10:
-                factor = 0.95
-                h_current = h_new #* factor + h_current * (1 - factor)
+                factor = 0.6
+                h_current = h_new * factor + h_current * (1 - factor)
             else:
                 h_current = h_new
 
             if max(h_current) >= 0.0:
                 if self.time_step == 'm':
-                    h_current[h_current > 0.0] = 0.0
+                    sat_val = self.soil_profile.th_s[0]
+                    theta_current = self.prev_cond.th.copy()
+                    addition = theta_current[0] + Infl / self.dz[0]
+                    runoff = max(0, addition - sat_val)
+                    Infl -= runoff
+                    theta_current[0] = min(sat_val, addition)
+                    epsilon = 1e-7
+                    theta_current_clamp = np.maximum(self.pars['thetaR'] + epsilon, theta_current)
+                    h_current = psi_fun(theta_current_clamp, self.pars)
                     print('No Convergence')
                     converged = True
+                    dry_soil = False
+                    break
                 else:
+                    converged = False
+                    break
+
+            if max_diff > 50.0 and iter > 12:
+                if self.time_step == 'm':
+                    sat_val = self.soil_profile.th_s[0]
+                    epsilon = 1e-7
+                    theta_current = self.prev_cond.th
+                    addition = theta_current[0] + Infl / self.dz[0]
+                    runoff = max(0, addition - sat_val)
+                    Infl -= runoff
+                    theta_current[0] = min(sat_val, addition)
+                    clamped_theta = np.maximum(self.pars['thetaR'] + epsilon, theta_current)
+                    h_current = psi_fun(clamped_theta, self.pars)
+                    converged = True
+                    dry_soil = False
                     break
 
             theta_current = thetaf(h_current, self.pars)
             K_current = K(h_current, self.pars)
             C_current = C(h_current, self.pars)
+
+            # if self.time_step == 'm' and max_diff > 20.0:
+            #     print('No Convergence')
+            #     converged = True
+
             if converged:
                 break
 
         # update theta/K/C
 
+        if not converged and max_diff < 0.01:
+            converged = True
         deep_percolation = 0.0
-        if self.time_step != 's' and not converged:
-            runoff = 0.0
-            Infl = 0.0
-            if self.time_step == 'h':
-                solver = RichardEquationSolver(self.soil_profile, new_cond, time_step='m')
-            elif self.time_step == 'm':
-                solver = RichardEquationSolver(self.soil_profile, new_cond, time_step='s')
-            for _step in range(solver.Nt):
-                converged, theta_current, _deep_perc, _runoff, _infl, K_current, C_current, h_current = solver.solve(_step, new_cond, irrigation/60.0, rainfall/60.0)
-                new_cond.th = theta_current
-                runoff += _runoff
-                Infl += _infl
-                deep_percolation += _deep_perc
+        fallback_used = False
+        if not converged:
+            fallback_used = True
+            solver = None
+            if self.time_step != 'm':
+                runoff = 0.0
+                Infl = 0.0
+                if self.time_step == 'h':
+                    solver = RichardEquationSolver(self.soil_profile, self.prev_cond, time_step='m')
+                    solver.Infiltration_So_Far = self.Infiltration_So_Far
+            else:
+                if dry_soil:
+                    sat_val = self.soil_profile.th_s
+                    theta_current = self.prev_cond.th.copy()
+                    addition = theta_current[0] + Infl / self.dz[0]
+                    runoff = max(0, addition - sat_val[0])
+                    theta_current[0] = min(sat_val[0], addition)
+                    epsilon = 1e-7
+                    theta_clamp = np.maximum(self.pars['thetaR'] + epsilon, theta_current)
+                    h_current = psi_fun(theta_clamp, self.pars)
+                    K_current = K(h_current, self.pars)
+                    q_bottom, deep_percolation = compute_deep_percolation(K_current, self.dt)
+            # elif self.time_step == 'm':
+            #     solver = RichardEquationSolver(self.soil_profile, new_cond, time_step='s')
+            if solver:
+                sub_step_theta_prev = theta_prev_prev.copy()
+                new_cond_sub = copy.deepcopy(new_cond)
+
+                for _step in range(solver.Nt):
+                    new_cond_sub.th = sub_step_theta_prev
+
+                    converged, theta_current, _deep_perc, _runoff, _infl, K_current, C_current, h_current = solver.solve(
+                        _step, new_cond_sub, irrigation / solver.Nt, rainfall / solver.Nt)
+
+                    sub_step_theta_prev = theta_current.copy()
+
+                    runoff += _runoff
+                    Infl += _infl
+                    deep_percolation += _deep_perc
+
         self.Infiltration_So_Far += Infl
-        self.theta_val[:, step] = theta_current
-        self.K_val[:, step] = K_current
-        self.C_val[:, step] = C_current
         self.runoff_val[step] = runoff  # unit: m/hr
-        self.psi[:, step] = h_current
         # calculate deep percolation
         if converged:
-            q_bottom, deep_percolation = compute_deep_percolation(K_current, self.dt)
-        if not converged:
+            if dry_soil:
+                # dry layers
+                mask = np.array(theta_prev_prev < self.soil_profile.th_r)
+                for i, val in enumerate(mask):
+                    if val:
+                        theta_current[i] = theta_prev_prev[i] + theta_current[i] - ref_prev_theta_current[i]
+            if not fallback_used:
+                q_bottom, deep_percolation = compute_deep_percolation(K_current, self.dt)
+            prev_water = sum(self.prev_cond.th * self.dz) * 1000
+            new_water = sum(theta_current * self.dz) * 1000
+            deep_perc = deep_percolation * 1000
+            infilt = Infl * 1000
+            err = prev_water - new_water + infilt - deep_perc
+            if abs(err) > 0.1:
+                print('error')
+        if not converged and not dry_soil:
             runoff += R
         self.deep_percolation_val[step] = deep_percolation
+        self.prev_cond.th = theta_current
 
-        new_theta = self.theta_val[:, step].flatten()
+        new_theta = theta_current.flatten()
         return converged, new_theta, deep_percolation, runoff, Infl, K_current, C_current, h_current
 
 
@@ -325,18 +413,27 @@ class RichardEquationSolver:
         # takes current hour as input
         # print(f'hour: {step}')
         R = (rainfall + irrigation)/1000.0
-
+        self.tolerance = 1e-5
         theta_prev = np.array(self.prev_cond.th)
+        theta_prev_prev = theta_prev
         h_current = psi_fun(theta_prev, self.pars)
+        dry_soil = False
+        if any(np.array(self.prev_cond.th) < self.soil_profile.th_r):
+            dry_soil = True
+            self.tolerance = 1.0
+            epsilon = 1e-6
+            theta_prev = np.maximum(self.pars['thetaR'] + epsilon, self.prev_cond.th)
+            h_current = psi_fun(theta_prev, self.pars)
 
         theta_current = thetaf(h_current, self.pars)
+        ref_prev_theta_current = theta_current.copy()
         K_current = K(h_current, self.pars)
         C_current = C(h_current, self.pars)
         Infl = 0.0
         diff_water_content = new_cond.th - theta_prev
         converged = False
         # at each timestep, update the value of theta, K and C for each compartment
-        for iter in range(max_iter):
+        for iter in range(self.max_iter):
             # at each step of picard iteration
             # values at iter = m
             # self.theta_val[:, step] = thetaf(h_current, self.pars)
@@ -345,13 +442,13 @@ class RichardEquationSolver:
 
             #K_step = self.K_val[:, step]
             # first layer is bit complicated as we need to set up boundary condition.
-            K_half = mean(K_current[:-1], K_current[1:], self.dz.values)
+            K_half = wieghted_geometric_mean(K_current[:-1], K_current[1:], self.dz.values)
             # K_half = 2 / (1/K_step[:-1] + 1/K_step[1:])
 
             # if there's rainfall or irrigation, updated h_current
 
-            A, b = assemble_system(K_half, C_current, theta_prev, theta_current, h_current, self.dz, self.dt, K_current[0],
-                                   K_current[-1], diff_water_content, iter, R)
+            A, b = assemble_system(K_half, C_current, theta_prev, theta_current, h_current, self.dz, self.dt,
+                                   K_current[-1])
 
             # if R != 0:
             #     runoff = apply_top_bc(A, b, R, h_current, K_current, dz, pars, iter)
@@ -361,25 +458,28 @@ class RichardEquationSolver:
             flux, runoff = calculate_top_flux_infiltration(R, h_current, self.pars, self.dz[0], self.Infiltration_So_Far, theta_current[0])
             b[0] += (flux / self.dz[0])  # downward positive flux
             Infl = flux * self.dt
-            h_new = spsolve(csc_matrix(A), b)
+            try:
+                h_new = spsolve(csc_matrix(A), b)
+            except:
+                converged = False
+                break
             # Check convergence
             # if np.max(np.abs(h_new - h_current)) < tolerance:
             #     break
             # convergence check with relative tolerance
             max_diff = np.max(np.abs(h_new - h_current))
-            if max_diff > 2.0:
-                converged = False
+
+            if (max(h_new) >= 0.0 or max_diff > 2.0):
+                dry_soil = False
                 break
+
             if max_diff < self.tolerance:
                 h_current = h_new
+                dry_soil = False
                 converged = True
                 break
 
-            # relaxation factor
-            # if h_new[0] < 0.0:
-            #     h_current = h_new
-            # else:
-                # if soil becomes saturated, it doesn't make sense to calculate it.
+
             if max(h_new) > -1e-10:
                 factor = 0.6
                 h_current = h_new * factor + h_current * (1 - factor)
@@ -393,9 +493,18 @@ class RichardEquationSolver:
             K_current = K(h_current, self.pars)
             C_current = C(h_current, self.pars)
 
+
         # calculate deep percolation
         q_bottom, deep_percolation = compute_deep_percolation(K_current, self.dt)
         #self.deep_percolation_val[step] = deep_percolation
+        if converged:
+            if dry_soil:
+                # dry layers
+                mask = np.array(theta_prev_prev < self.soil_profile.th_r)
+                for i, val in enumerate(mask):
+                    if val:
+                        theta_current[i] = theta_prev_prev[i] + theta_current[i] - ref_prev_theta_current[i]
 
+            self.prev_cond.th = theta_current
         new_theta = theta_current.flatten()#self.theta_val[:, step].flatten()
         return converged, new_theta, deep_percolation, runoff, Infl, K_current

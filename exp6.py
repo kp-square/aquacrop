@@ -1,4 +1,4 @@
-from aquacrop import AquaCropModel, Soil, Crop, InitialWaterContent, IrrigationManagement
+from aquacrop import AquaCropModel, SoilGeorgia, Soil, Crop, InitialWaterContent, IrrigationManagement
 from aquacrop.utils import prepare_weather, get_filepath
 from dataset.dataobjects import SoilType, ExpData
 import pickle
@@ -37,6 +37,10 @@ irr_sch.rename({'DATE':'Date', 'irr_depth':'Depth'}, axis=1, inplace=True)
 irrmethod = IrrigationManagement(irrigation_method=3, Schedule=irr_sch)
 #irrmethod.Schedule = irr_sch
 
+TARGET_TOP_LAYER_THICKNESS = 0.02  # This is 2 cm
+TOLERANCE = 0.005 # 0.5 cm
+
+
 dzz = []
 soil_types = []
 prev = 0.0
@@ -47,12 +51,24 @@ for typ in expobj.soil_types:
     soil_types.append(typ.soil_type)
     prev = typ.depth
 
+# Ensure the top layer has thickness equal to 2 cm only.
+if dzz and dzz[0] > (TARGET_TOP_LAYER_THICKNESS + TOLERANCE):
+    original_first_layer_thickness = dzz[0]
+    original_first_layer_type = soil_types[0]
+
+    remainder_thickness = original_first_layer_thickness - TARGET_TOP_LAYER_THICKNESS
+
+    dzz[0] = TARGET_TOP_LAYER_THICKNESS
+    dzz.insert(1, round(remainder_thickness, 2))
+
+    soil_types.insert(1, original_first_layer_type)
+
 # Make at least 10 layers of soil, extend the last layer
 while len(dzz) < 10:
     dzz.append(dzz[-1])
     soil_types.append(soil_types[-1])
 
-soil = Soil(soil_type=soil_types, dz=dzz)
+soil = SoilGeorgia(soil_type=soil_types, dz=dzz)
 
 # calibrate these parameters to match the actual yield
 # run 54 parallel jobs with same value of WP and HI0, collect the results, calculate MSE and then run again for modified values of WP and HIO
