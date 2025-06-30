@@ -11,7 +11,7 @@ import argparse
 
 def hp_optimizer(crop_type, years, wp_range, hi0_range, hourly, use_richards):
     #optimize wp, hi0 with minimum average error obtained from run_processes
-    n_trials = 100
+    n_trials = 10
     def objective(trial):
         wp = trial.suggest_float('wp', wp_range[0], wp_range[1])
         hi0 = trial.suggest_float('hi0', hi0_range[0], hi0_range[1])
