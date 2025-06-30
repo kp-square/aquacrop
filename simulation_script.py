@@ -77,8 +77,9 @@ def run_simulation(args):
 
             soil_types.insert(1, original_first_layer_type)
 
-        # Make at least 10 layers of soil, extend the last layer
-        while len(dzz) < 10:
+        # Make at least 12 layers of soil, extend the last layer
+        # Make the total depth of soil profile at least crop.maxZ + 0.1
+        while len(dzz) < 12:
             dzz.append(dzz[-1])
             soil_types.append(soil_types[-1])
 
