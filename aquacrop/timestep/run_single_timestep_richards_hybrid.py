@@ -31,7 +31,7 @@ from ..solution.root_development import root_development
 from ..solution.infiltration import infiltration
 from ..solution.HIref_current_day import HIref_current_day
 from ..solution.biomass_accumulation import biomass_accumulation
-from ..utils.richards.richards_eqn_solver_hybrid import RichardEquationSolver
+from ..utils.richards.richards_eqn_solver import RichardEquationSolver
 from ..utils.richards.richards_utils import nrcs_type2_hourly_dissociation
 from ..utils.richards.richards_utils import irrigation_dissociation
 from ..utils.richards.plots import plot_crop_simulation_data
@@ -253,7 +253,7 @@ def solution_single_time_step_richards_hybrid(
 
     DeepPerc, Runoff, Infl = 0.0, Runoff_CN/1000, Infl
     PrevCond = copy.deepcopy(NewCond)
-    solverd = RichardEquationSolver(Soil.profile, PrevCond, time_step='d')
+    solverd = RichardEquationSolver(Soil.profile, PrevCond, param_struct, time_step='d', use_root_uptake=False)
     converged, new_th, _DeepPerc, _Runoff, _Infl, FluxOut = solverd.solve_daily(NewCond, Irr, Infl)
     if converged:
         NewCond.th = new_th
@@ -264,11 +264,11 @@ def solution_single_time_step_richards_hybrid(
         Runoff = 0.0
         Infl = 0.0
         PrevCond = copy.deepcopy(NewCond)
-        solverh = RichardEquationSolver(Soil.profile, PrevCond, time_step='h')
+        solverh = RichardEquationSolver(Soil.profile, PrevCond, param_struct, time_step='h', use_root_uptake=False)
         hourly_rainfall = nrcs_type2_hourly_dissociation(precipitation)
         hourly_irrigation = irrigation_dissociation(Irr)
         for hour in range(0, 24):
-            converged, new_th, _DeepPerc, _Runoff, _Infl, FluxOut, _, _ = solverh.solve(hour, NewCond, hourly_irrigation[hour], hourly_rainfall[hour])
+            converged, new_th, _DeepPerc, _Runoff, _Infl, FluxOut= solverh.solve(hour, NewCond, hourly_irrigation[hour], hourly_rainfall[hour])
             NewCond.th = new_th
             DeepPerc += _DeepPerc
             Runoff += _Runoff

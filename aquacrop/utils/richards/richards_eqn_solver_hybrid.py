@@ -226,202 +226,218 @@ class RichardEquationSolver:
         R = (rainfall + irrigation) / 1000.0
         # If soil is super dry, i.e. in any layer moisture is below theta_r don't proceed
         self.tolerance = 1e-5
+
+        SATURATION_THRESHOLD_h = -0.03
+        h_eff_sat = np.full(self.Nz, SATURATION_THRESHOLD_h)
+        theta_eff_sat = thetaf(h_eff_sat, self.pars)
+        infiltration_source = np.zeros(self.Nz)
+
         theta_prev = np.array(self.prev_cond.th)
         theta_prev_prev = theta_prev.copy()
         h_current = psi_fun(theta_prev, self.pars)
+
+        root_water_uptake = (new_cond.th - theta_prev_prev) / self.dt
+
+        Infl, runoff = calculate_top_flux_infiltration(R, h_current, self.pars, self.dz,
+                                                       self.Infiltration_So_Far, theta_prev, theta_eff_sat)
+        top_flux = Infl
+
+        diff_water_content = root_water_uptake
+
         dry_soil = False
-        if any(np.array(self.prev_cond.th) < self.soil_profile.th_r):
+        no_deep_perc = False
+        if any(np.array(self.prev_cond.th) < (self.soil_profile.th_r + 1e-3)):
             dry_soil = True
-            self.tolerance = 1.0
-            epsilon = 1e-6
+            epsilon = 1e-3
             theta_prev = np.maximum(self.pars['thetaR'] + epsilon, self.prev_cond.th)
             h_current = psi_fun(theta_prev, self.pars)
-            # self.prev_cond.th = new_cond.th
 
         theta_current = thetaf(h_current, self.pars)
         ref_prev_theta_current = theta_current.copy()
         K_current = K(h_current, self.pars)
         C_current = C(h_current, self.pars)
-        Infl = 0.0
         converged = False
+        prev_max_diff = 1.0
         # at each timestep, update the value of theta, K and C for each compartment
+
+        # Anderson Acceleration memory size
+        m_aa = 5
+        h_hist = np.zeros((len(h_current), m_aa))
+        f_hist = np.zeros((len(h_current), m_aa))
+        beta = 1.0
+        divergence_count = 0
         for iter in range(self.max_iter):
-            # at each step of picard iteration
-            # values at iter = m
 
-            # first layer is bit complicated as we need to set up boundary condition.
             K_half = wieghted_geometric_mean(K_current[:-1], K_current[1:], self.dz.values)
-            # K_half = 2 / (1/K_step[:-1] + 1/K_step[1:])
-
-            # if there's rainfall or irrigation, updated h_current
 
             A, b = assemble_system(K_half, C_current, theta_prev, theta_current, h_current, self.dz, self.dt,
-                                   K_current[-1])
+                                   K_current[0],
+                                   K_current[-1], diff_water_content, 0, 0)
 
-            # if R != 0:
-            #     runoff = apply_top_bc(A, b, R, h_current, K_current, dz, pars, iter)
-            # else:
-            #     runoff = 0.0
-            flux, runoff = calculate_top_flux_infiltration(R, h_current, self.pars, self.dz[0],
-                                                           self.Infiltration_So_Far, theta_current[0])
-            b[0] += (flux / self.dz[0])  # downward positive flux
-            Infl = flux * self.dt
+            b[0] += (top_flux / self.dz[0])  # downward positive flux
+
             try:
-                h_new = spsolve(csc_matrix(A), b)
+                b_mpi = b - (A @ h_current)
+                delta_h = spsolve(csc_matrix(A), b_mpi)
             except:
                 converged = False
                 break
-            # Check convergence
-            # if np.max(np.abs(h_new - h_current)) < tolerance:
-            #     break
-            # convergence check with relative tolerance
-            max_diff = np.max(np.abs(h_new - h_current))
 
-            if (max(h_new) >= 0.0 or max_diff > 20.0) and self.time_step == 'h':
-                converged = False
-                dry_soil = False
-                break
+            max_diff = np.linalg.norm(delta_h)
 
             if max_diff < self.tolerance:
                 converged = True
+                break
 
-            if max(h_new) > -1e-10:
-                factor = 0.6
-                h_current = h_new * factor + h_current * (1 - factor)
+            max_diff_differential = (max_diff - prev_max_diff)
+            if max_diff_differential > 0:
+                divergence_count += 1
             else:
-                h_current = h_new
+                divergence_count -= 1
+            prev_max_diff = max_diff
 
-            if max(h_current) >= 0.0:
-                if self.time_step == 'm':
-                    sat_val = self.soil_profile.th_s[0]
-                    theta_current = self.prev_cond.th.copy()
-                    addition = theta_current[0] + Infl / self.dz[0]
-                    runoff = max(0, addition - sat_val)
-                    Infl -= runoff
-                    theta_current[0] = min(sat_val, addition)
-                    epsilon = 1e-7
-                    theta_current_clamp = np.maximum(self.pars['thetaR'] + epsilon, theta_current)
-                    h_current = psi_fun(theta_current_clamp, self.pars)
-                    print('No Convergence')
-                    converged = True
-                    dry_soil = False
-                    break
-                else:
-                    converged = False
-                    break
+            if max(h_current + delta_h) > -1e-3:
+                beta = 0.5
+            elif max(h_current) > -0.1:
+                if max_diff_differential > -0.25:
+                    beta = 0.7
+            elif divergence_count > 3:
+                beta = 0.5
+            elif max_diff > 4.0:
+                beta = 0.25
+            elif max_diff > 2.0:
+                beta = 0.5
+            elif max_diff > 1.0:
+                beta = 0.75
+            else:
+                beta = 1.0
 
-            if max_diff > 50.0 and iter > 12:
-                if self.time_step == 'm':
-                    sat_val = self.soil_profile.th_s[0]
-                    epsilon = 1e-7
-                    theta_current = self.prev_cond.th
-                    addition = theta_current[0] + Infl / self.dz[0]
-                    runoff = max(0, addition - sat_val)
-                    Infl -= runoff
-                    theta_current[0] = min(sat_val, addition)
-                    clamped_theta = np.maximum(self.pars['thetaR'] + epsilon, theta_current)
-                    h_current = psi_fun(clamped_theta, self.pars)
-                    converged = True
-                    dry_soil = False
-                    break
+            k_aa = iter % m_aa
+            h_hist[:, k_aa] = h_current
+            f_hist[:, k_aa] = delta_h
+            m_eff = min(iter + 1, m_aa)
+            if iter == 0:
+                h_new = h_current + beta * delta_h
+            else:
+                f_diff = f_hist[:, 1:m_eff] - f_hist[:, 0:m_eff - 1]
+                gamma, _, _, _ = np.linalg.lstsq(f_diff, -delta_h, rcond=None)
+                h_update_hist = h_hist[:, 1:m_eff] - h_hist[:, 0:m_eff - 1]
+                h_new = (h_current + delta_h) - np.dot(h_update_hist, gamma) - np.dot(f_diff, gamma)
+
+                if beta != 1.0:
+                    h_new = h_current + beta * (h_new - h_current)
+
+            h_current = h_new
+
+            if max_diff_differential > 5.0 and self.time_step != 'm':
+                break
+
+            if np.any(h_current >= 0.0):
+                break
 
             theta_current = thetaf(h_current, self.pars)
             K_current = K(h_current, self.pars)
             C_current = C(h_current, self.pars)
 
-            # if self.time_step == 'm' and max_diff > 20.0:
-            #     print('No Convergence')
-            #     converged = True
-
-            if converged:
+            if converged or divergence_count > 10:
                 break
 
         # update theta/K/C
 
-        if not converged and max_diff < 0.01:
+        if iter > 20 and max_diff < 0.001:
             converged = True
+
         deep_percolation = 0.0
         fallback_used = False
-        if not converged:
+        if not converged and self.time_step != 'm':
             fallback_used = True
             solver = None
-            if self.time_step != 'm':
-                runoff = 0.0
-                Infl = 0.0
-                if self.time_step == 'h':
-                    solver = RichardEquationSolver(self.soil_profile, self.prev_cond, time_step='m')
-                    solver.Infiltration_So_Far = self.Infiltration_So_Far
-            else:
-                if dry_soil:
-                    sat_val = self.soil_profile.th_s
-                    theta_current = self.prev_cond.th.copy()
-                    addition = theta_current[0] + Infl / self.dz[0]
-                    runoff = max(0, addition - sat_val[0])
-                    theta_current[0] = min(sat_val[0], addition)
-                    epsilon = 1e-7
-                    theta_clamp = np.maximum(self.pars['thetaR'] + epsilon, theta_current)
-                    h_current = psi_fun(theta_clamp, self.pars)
-                    K_current = K(h_current, self.pars)
-                    q_bottom, deep_percolation = compute_deep_percolation(K_current, self.dt)
-            # elif self.time_step == 'm':
-            #     solver = RichardEquationSolver(self.soil_profile, new_cond, time_step='s')
+            runoff = 0.0
+            Infl = 0.0
+            if self.time_step == 'h':
+                solver = RichardEquationSolver(self.soil_profile, self.prev_cond, time_step='sm')
+                solver.Infiltration_So_Far = self.Infiltration_So_Far
+
+            if self.time_step == 'sm':
+                solver = RichardEquationSolver(self.soil_profile, self.prev_cond, time_step='m')
+                solver.Infiltration_So_Far = self.Infiltration_So_Far
+
             if solver:
+                dry_soil = False
+                diff_water_sub = root_water_uptake / solver.Nt
                 sub_step_theta_prev = theta_prev_prev.copy()
                 new_cond_sub = copy.deepcopy(new_cond)
 
                 for _step in range(solver.Nt):
-                    new_cond_sub.th = sub_step_theta_prev
+                    new_cond_sub.th = sub_step_theta_prev + diff_water_sub
 
-                    converged, theta_current, _deep_perc, _runoff, _infl, K_current, C_current, h_current = solver.solve(
-                        _step, new_cond_sub, irrigation / solver.Nt, rainfall / solver.Nt)
+                    converged, theta_current, _deep_perc, _runoff, _infl = solver.solve(
+                        step * self.Nt + _step, new_cond_sub, irrigation / solver.Nt, rainfall / solver.Nt)
 
                     sub_step_theta_prev = theta_current.copy()
 
                     runoff += _runoff
                     Infl += _infl
                     deep_percolation += _deep_perc
+        elif not converged:
+            dry_soil = False
+            theta_current, deep_percolation, runoff, Infl = self.handle_non_convergence(R, theta_prev_prev,
+                                                                                        root_water_uptake)
 
         self.Infiltration_So_Far += Infl
-        self.runoff_val[step] = runoff  # unit: m/hr
         # calculate deep percolation
         if converged:
             if dry_soil:
                 # dry layers
-                mask = np.array(theta_prev_prev < self.soil_profile.th_r)
+                mask = np.array(theta_prev_prev < (self.soil_profile.th_r + 1e-3))
                 for i, val in enumerate(mask):
                     if val:
                         theta_current[i] = theta_prev_prev[i] + theta_current[i] - ref_prev_theta_current[i]
-            if not fallback_used:
+            if not fallback_used and not no_deep_perc:
                 q_bottom, deep_percolation = compute_deep_percolation(K_current, self.dt)
             prev_water = sum(self.prev_cond.th * self.dz) * 1000
             new_water = sum(theta_current * self.dz) * 1000
             deep_perc = deep_percolation * 1000
+            evap_traspir = sum(root_water_uptake * self.dz) * 1000
             infilt = Infl * 1000
-            err = prev_water - new_water + infilt - deep_perc
-            if abs(err) > 0.1:
+            err = prev_water - new_water + infilt - deep_perc + evap_traspir
+            if abs(err) > 0.02:
                 print('error')
-        if not converged and not dry_soil:
-            runoff += R
-        self.deep_percolation_val[step] = deep_percolation
+
         self.prev_cond.th = theta_current
 
         new_theta = theta_current.flatten()
-        return converged, new_theta, deep_percolation, runoff, Infl, K_current, C_current, h_current
+        return converged, new_theta, deep_percolation, runoff, Infl
 
 
     def solve_daily(self, new_cond, irrigation, rainfall):
         # takes current hour as input
         # print(f'hour: {step}')
-        R = (rainfall + irrigation)/1000.0
+        R = (rainfall + irrigation) / 1000.0
+        # If soil is super dry, i.e. in any layer moisture is below theta_r don't proceed
         self.tolerance = 1e-5
+
+        SATURATION_THRESHOLD_h = -0.03
+        h_eff_sat = np.full(self.Nz, SATURATION_THRESHOLD_h)
+        theta_eff_sat = thetaf(h_eff_sat, self.pars)
+
         theta_prev = np.array(self.prev_cond.th)
-        theta_prev_prev = theta_prev
+        theta_prev_prev = theta_prev.copy()
         h_current = psi_fun(theta_prev, self.pars)
+
+        root_water_uptake = (new_cond.th - theta_prev_prev) / self.dt
+
+        Infl, runoff = calculate_top_flux_infiltration(R, h_current, self.pars, self.dz,
+                                                       self.Infiltration_So_Far, theta_prev, theta_eff_sat)
+        top_flux = Infl
+
+        diff_water_content = root_water_uptake
+
         dry_soil = False
-        if any(np.array(self.prev_cond.th) < self.soil_profile.th_r):
+        no_deep_perc = False
+        if any(np.array(self.prev_cond.th) < (self.soil_profile.th_r + 1e-3)):
             dry_soil = True
-            self.tolerance = 1.0
-            epsilon = 1e-6
+            epsilon = 1e-3
             theta_prev = np.maximum(self.pars['thetaR'] + epsilon, self.prev_cond.th)
             h_current = psi_fun(theta_prev, self.pars)
 
@@ -429,82 +445,155 @@ class RichardEquationSolver:
         ref_prev_theta_current = theta_current.copy()
         K_current = K(h_current, self.pars)
         C_current = C(h_current, self.pars)
-        Infl = 0.0
-        diff_water_content = new_cond.th - theta_prev
         converged = False
+        prev_max_diff = 1.0
         # at each timestep, update the value of theta, K and C for each compartment
+
+        # Anderson Acceleration memory size
+        m_aa = 5
+        h_hist = np.zeros((len(h_current), m_aa))
+        f_hist = np.zeros((len(h_current), m_aa))
+        beta = 1.0
+        divergence_count = 0
         for iter in range(self.max_iter):
-            # at each step of picard iteration
-            # values at iter = m
-            # self.theta_val[:, step] = thetaf(h_current, self.pars)
-            # self.K_val[:, step] = K(h_current, self.pars)
-            # self.C_val[:, step] = C(h_current, self.pars)
 
-            #K_step = self.K_val[:, step]
-            # first layer is bit complicated as we need to set up boundary condition.
             K_half = wieghted_geometric_mean(K_current[:-1], K_current[1:], self.dz.values)
-            # K_half = 2 / (1/K_step[:-1] + 1/K_step[1:])
-
-            # if there's rainfall or irrigation, updated h_current
 
             A, b = assemble_system(K_half, C_current, theta_prev, theta_current, h_current, self.dz, self.dt,
-                                   K_current[-1])
+                                   K_current[0],
+                                   K_current[-1], diff_water_content, 0, 0)
 
-            # if R != 0:
-            #     runoff = apply_top_bc(A, b, R, h_current, K_current, dz, pars, iter)
-            # else:
-            #     runoff = 0.0
+            b[0] += (top_flux / self.dz[0])  # downward positive flux
 
-            flux, runoff = calculate_top_flux_infiltration(R, h_current, self.pars, self.dz[0], self.Infiltration_So_Far, theta_current[0])
-            b[0] += (flux / self.dz[0])  # downward positive flux
-            Infl = flux * self.dt
             try:
-                h_new = spsolve(csc_matrix(A), b)
+                b_mpi = b - (A @ h_current)
+                delta_h = spsolve(csc_matrix(A), b_mpi)
             except:
                 converged = False
                 break
-            # Check convergence
-            # if np.max(np.abs(h_new - h_current)) < tolerance:
-            #     break
-            # convergence check with relative tolerance
-            max_diff = np.max(np.abs(h_new - h_current))
 
-            if (max(h_new) >= 0.0 or max_diff > 2.0):
-                dry_soil = False
-                break
+            max_diff = np.linalg.norm(delta_h)
 
             if max_diff < self.tolerance:
-                h_current = h_new
-                dry_soil = False
                 converged = True
                 break
 
-
-            if max(h_new) > -1e-10:
-                factor = 0.6
-                h_current = h_new * factor + h_current * (1 - factor)
+            max_diff_differential = (max_diff - prev_max_diff)
+            if max_diff_differential > 0:
+                divergence_count += 1
             else:
-                h_current = h_new
+                divergence_count -= 1
+            prev_max_diff = max_diff
 
-            if max(h_current) > 0.0:
+            if max(h_current + delta_h) > -1e-3:
+                beta = 0.5
+            elif max(h_current) > -0.1:
+                if max_diff_differential > -0.25:
+                    beta = 0.7
+            elif divergence_count > 3:
+                beta = 0.5
+            elif max_diff > 4.0:
+                beta = 0.25
+            elif max_diff > 2.0:
+                beta = 0.5
+            elif max_diff > 1.0:
+                beta = 0.75
+            else:
+                beta = 1.0
+
+            k_aa = iter % m_aa
+            h_hist[:, k_aa] = h_current
+            f_hist[:, k_aa] = delta_h
+            m_eff = min(iter + 1, m_aa)
+            if iter == 0:
+                h_new = h_current + beta * delta_h
+            else:
+                f_diff = f_hist[:, 1:m_eff] - f_hist[:, 0:m_eff - 1]
+                gamma, _, _, _ = np.linalg.lstsq(f_diff, -delta_h, rcond=None)
+                h_update_hist = h_hist[:, 1:m_eff] - h_hist[:, 0:m_eff - 1]
+                h_new = (h_current + delta_h) - np.dot(h_update_hist, gamma) - np.dot(f_diff, gamma)
+
+                if beta != 1.0:
+                    h_new = h_current + beta * (h_new - h_current)
+
+            h_current = h_new
+
+            if max_diff_differential > 5.0 and self.time_step != 'm':
+                break
+
+            if np.any(h_current >= 0.0):
                 break
 
             theta_current = thetaf(h_current, self.pars)
             K_current = K(h_current, self.pars)
             C_current = C(h_current, self.pars)
 
+            if converged or divergence_count > 10:
+                break
 
+        # update theta/K/C
+
+        if iter > 20 and max_diff < 0.001:
+            converged = True
+
+        deep_percolation = 0.0
+        fallback_used = False
+        if not converged and self.time_step != 'm':
+            fallback_used = True
+            solver = None
+            runoff = 0.0
+            Infl = 0.0
+            if self.time_step == 'h':
+                solver = RichardEquationSolver(self.soil_profile, self.prev_cond, time_step='sm')
+                solver.Infiltration_So_Far = self.Infiltration_So_Far
+
+            if self.time_step == 'sm':
+                solver = RichardEquationSolver(self.soil_profile, self.prev_cond, time_step='m')
+                solver.Infiltration_So_Far = self.Infiltration_So_Far
+
+            if solver:
+                dry_soil = False
+                diff_water_sub = root_water_uptake / solver.Nt
+                sub_step_theta_prev = theta_prev_prev.copy()
+                new_cond_sub = copy.deepcopy(new_cond)
+
+                for _step in range(solver.Nt):
+                    new_cond_sub.th = sub_step_theta_prev + diff_water_sub
+
+                    converged, theta_current, _deep_perc, _runoff, _infl = solver.solve(
+                        step * self.Nt + _step, new_cond_sub, irrigation / solver.Nt, rainfall / solver.Nt)
+
+                    sub_step_theta_prev = theta_current.copy()
+
+                    runoff += _runoff
+                    Infl += _infl
+                    deep_percolation += _deep_perc
+        elif not converged:
+            dry_soil = False
+            theta_current, deep_percolation, runoff, Infl = self.handle_non_convergence(R, theta_prev_prev,
+                                                                                        root_water_uptake)
+
+        self.Infiltration_So_Far += Infl
         # calculate deep percolation
-        q_bottom, deep_percolation = compute_deep_percolation(K_current, self.dt)
-        #self.deep_percolation_val[step] = deep_percolation
         if converged:
             if dry_soil:
                 # dry layers
-                mask = np.array(theta_prev_prev < self.soil_profile.th_r)
+                mask = np.array(theta_prev_prev < (self.soil_profile.th_r + 1e-3))
                 for i, val in enumerate(mask):
                     if val:
                         theta_current[i] = theta_prev_prev[i] + theta_current[i] - ref_prev_theta_current[i]
+            if not fallback_used and not no_deep_perc:
+                q_bottom, deep_percolation = compute_deep_percolation(K_current, self.dt)
+            prev_water = sum(self.prev_cond.th * self.dz) * 1000
+            new_water = sum(theta_current * self.dz) * 1000
+            deep_perc = deep_percolation * 1000
+            evap_traspir = sum(root_water_uptake * self.dz) * 1000
+            infilt = Infl * 1000
+            err = prev_water - new_water + infilt - deep_perc + evap_traspir
+            if abs(err) > 0.02:
+                print('error')
 
-            self.prev_cond.th = theta_current
-        new_theta = theta_current.flatten()#self.theta_val[:, step].flatten()
-        return converged, new_theta, deep_percolation, runoff, Infl, K_current
+        self.prev_cond.th = theta_current
+
+        new_theta = theta_current.flatten()
+        return converged, new_theta, deep_percolation, runoff, Infl

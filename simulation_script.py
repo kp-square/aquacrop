@@ -47,9 +47,12 @@ def run_simulation(args):
         irr_sch = irr_sch.rename({'DATE': 'Date', 'irr_depth': 'Depth'}, axis=1)
         irrmethod = IrrigationManagement(irrigation_method=3, Schedule=irr_sch)
 
+        TARGET_TOP_LAYER_THICKNESS = 0.02
+        TOLERANCE = 0.005
         dzz = []
         soil_types = []
         prev = 0.0
+
         for typ in expobj.soil_types:
             typ.depth = round(typ.depth, 2)
             if not typ.soil_type:
@@ -61,6 +64,18 @@ def run_simulation(args):
             dzz.append(round(typ.depth - prev, 2))
             soil_types.append(typ.soil_type)
             prev = typ.depth
+
+        # Ensure the top layer has thickness equal to 2 cm only.
+        if dzz and dzz[0] > (TARGET_TOP_LAYER_THICKNESS + TOLERANCE):
+            original_first_layer_thickness = dzz[0]
+            original_first_layer_type = soil_types[0]
+
+            remainder_thickness = original_first_layer_thickness - TARGET_TOP_LAYER_THICKNESS
+
+            dzz[0] = TARGET_TOP_LAYER_THICKNESS
+            dzz.insert(1, round(remainder_thickness, 2))
+
+            soil_types.insert(1, original_first_layer_type)
 
         # Make at least 10 layers of soil, extend the last layer
         while len(dzz) < 10:

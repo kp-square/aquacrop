@@ -292,7 +292,7 @@ def solution_single_time_step_richards(
 
     Infl = 0.0
     hourly_irrigation = irrigation_dissociation(Irr)
-    solver = RichardEquationSolver(Soil.profile, PrevCond, time_step='h')
+    solver = RichardEquationSolver(Soil.profile, PrevCond, param_struct, time_step='h', use_root_uptake=True)
     # --- Hourly Loop --- #
     for hour in range(24):
         et0_hr = et0[hour]
@@ -403,7 +403,7 @@ def solution_single_time_step_richards(
         # NewCond.th has the volumetric water content for each compartment
         Irr_so_far += irr_hr
         Precip_so_far += precipitation_hr
-        converged, new_th, DeepPerc, Runoff, Infl, FluxOut, _, _ = solver.solve(hour, NewCond,
+        converged, new_th, DeepPerc, Runoff, Infl, FluxOut = solver.solve(hour, NewCond,
                                                                                     irr_hr,
                                                                                     precipitation_hr)
         #if converged:
