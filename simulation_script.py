@@ -171,10 +171,10 @@ def main():
 if __name__=='__main__':
     x = 123
     args = {}
-    args['crop_type'] = 'Cotton'
-    args['year'] = 2019
-    args['treatment_id'] = 3
-    args['sirp_id'] = 114
+    args['crop_type'] = 'corn'
+    args['year'] = 2018
+    args['treatment_id'] = 8
+    args['sirp_id'] = 132
     args['hourly'] = True
     args['use_richards'] = True
     args['WP'] = 12

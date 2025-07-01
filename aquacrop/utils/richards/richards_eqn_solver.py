@@ -400,7 +400,7 @@ class RichardEquationSolver:
                     deep_percolation += _deep_perc
         elif not converged:
             dry_soil = False
-            theta_current, deep_percolation, runoff, infl, K_current = self.handle_non_convergence(R, theta_prev_prev, root_water_uptake)
+            theta_current, deep_percolation, runoff, infl, K_current = self.handle_non_convergence_bottom_up(R, theta_prev_prev, root_water_uptake)
 
         self.Infiltration_So_Far += infl
         # calculate deep percolation
@@ -427,7 +427,7 @@ class RichardEquationSolver:
         return converged, new_theta, deep_percolation, runoff, infl, K_current
 
 
-    def handle_non_convergence(self, R, theta_prev, root_uptake_rate):
+    def handle_non_convergence_top_down(self, R, theta_prev, root_uptake_rate):
         """
         Handles non-convergence by using a robust, explicit finite-difference
         scheme. This method calculates water flux based on hydraulic head gradients.
@@ -479,20 +479,20 @@ class RichardEquationSolver:
 
             # Ensure flux does not create non-physical water content values.
             # Limit water flowing out of the upper layer.
-            available_water_vol = max(0, (theta_new[i] - self.pars['thetaR'][i])) * self.dz[i]
+            available_water_vol = max(0, (theta_new[i] - self.theta_eff_residual[i])) * self.dz[i]
             flux_volume = min(flux_volume, available_water_vol) if flux_volume > 0 else flux_volume
 
             # Limit water flowing into the lower layer.
-            available_space_vol = max(0, (self.pars['thetaS'][i + 1] - theta_new[i + 1])) * self.dz[i + 1]
+            available_space_vol = max(0, (self.theta_eff_sat[i + 1] - theta_new[i + 1])) * self.dz[i + 1]
             flux_volume = min(flux_volume, available_space_vol) if flux_volume > 0 else flux_volume
 
             # Handle upward flux (negative volume) limitations similarly.
             if flux_volume < 0:
                 # Limit water flowing out of the lower layer.
-                available_water_vol_lower = max(0, (theta_new[i + 1] - self.pars['thetaR'][i + 1])) * self.dz[i + 1]
+                available_water_vol_lower = max(0, (theta_new[i + 1] - self.theta_eff_residual[i + 1])) * self.dz[i + 1]
                 flux_volume = max(flux_volume, -available_water_vol_lower)
                 # Limit water flowing into the upper layer.
-                available_space_vol_upper = max(0, (self.pars['thetaS'][i] - theta_new[i])) * self.dz[i]
+                available_space_vol_upper = max(0, (self.theta_eff_sat[i] - theta_new[i])) * self.dz[i]
                 flux_volume = max(flux_volume, -available_space_vol_upper)
 
             # Update water content in the two layers based on the flux volume.
@@ -506,11 +506,110 @@ class RichardEquationSolver:
         deep_percolation_volume = K_bottom * self.dt
 
         # Limit percolation by the amount of drainable water in the last layer.
+        available_perc_volume = max(0, (theta_new[-1] - self.theta_eff_residual.iloc[-1])) * self.dz.iloc[-1]
+        deep_percolation_volume = min(deep_percolation_volume, available_perc_volume)
+
+        # Update the water content of the last layer.
+        theta_new[-1] -= deep_percolation_volume / self.dz.iloc[-1]
+
+        # Final deep percolation is the volume per unit area.
+        deep_percolation = deep_percolation_volume
+        clamped_theta_new = np.maximum(theta_new, self.theta_eff_residual)
+        h_new = psi_fun(clamped_theta_new, self.pars)
+        k_new = K(h_new, self.pars)
+
+        return theta_new, deep_percolation, runoff, actual_infl, k_new
+
+
+    def handle_non_convergence_bottom_up(self, R, theta_prev, root_uptake_rate):
+        """
+        Handles non-convergence by using a robust, explicit finite-difference
+        scheme. This method calculates water flux based on hydraulic head gradients.
+
+        NOTE: This explicit scheme is subject to strict stability criteria and runs
+        only with timestep of 1 minute.
+        """
+        # Start with the water content from the beginning of the timestep
+        theta_new = theta_prev.copy()
+        clamped_theta = np.maximum(theta_new, self.theta_eff_residual)
+        h_current = psi_fun(clamped_theta, self.pars)
+
+        K_temp = K(h_current, self.pars)
+        K_half = wieghted_geometric_mean(K_temp[:-1], K_temp[1:], self.dz.values)
+
+        theta_new += root_uptake_rate
+
+        # 4. Handle Deep Percolation (Bottom Boundary Condition)
+        # Assume a "free drainage" condition where the gradient is 1 (gravity driven).
+        # The flux is then equal to the hydraulic conductivity of the last layer.
+        K_bottom = K_temp[-1]
+        deep_percolation_volume = K_bottom * self.dt
+
+        # Limit percolation by the amount of drainable water in the last layer.
         available_perc_volume = max(0, (theta_new[-1] - self.pars['thetaR'].iloc[-1])) * self.dz.iloc[-1]
         deep_percolation_volume = min(deep_percolation_volume, available_perc_volume)
 
         # Update the water content of the last layer.
         theta_new[-1] -= deep_percolation_volume / self.dz.iloc[-1]
+
+        # 3. Handle Water Redistribution Between Layers
+        # Calculate pressure head (psi) and hydraulic conductivity (K) from water content.
+        # h_temp = psi_fun(theta_new, self.pars)
+
+        # Iterate through all interfaces between the soil layers.
+        for i in range(self.Nz - 1, 0, -1):
+            # Approximate hydraulic conductivity at the interface between two layers.
+            K_interface = K_half[i-1]
+
+            # Calculate total hydraulic head (H = psi - z) for each layer.
+            # Assumes self.z_nodes stores the depth (positive downwards) of the layer center.
+            head_i = h_current[i] - self.z_nodes[i]
+            head_i_minus_1 = h_current[i - 1] - self.z_nodes[i - 1]
+
+            # Calculate the hydraulic gradient (dH/dz) between the two layers.
+            dz_interface = (self.dz[i] + self.dz[i - 1]) / 2.0
+            hydraulic_gradient = (head_i_minus_1 - head_i) / dz_interface
+
+            # Calculate water flux per unit area using Darcy's Law (q = -K * dH/dz).
+            flux_per_area = K_interface * hydraulic_gradient
+
+            # Calculate the total volume of water moving across the interface in this timestep.
+            flux_volume = flux_per_area * self.dt
+
+            # Ensure flux does not create non-physical water content values.
+            # Limit water flowing out of the upper layer.
+            available_water_vol = max(0, (theta_new[i-1] - self.theta_eff_residual[i-1])) * self.dz[i-1]
+            flux_volume = min(flux_volume, available_water_vol) if flux_volume > 0 else flux_volume
+
+            # Limit water flowing into the lower layer.
+            available_space_vol = max(0, (self.theta_eff_sat[i] - theta_new[i])) * self.dz[i]
+            flux_volume = min(flux_volume, available_space_vol) if flux_volume > 0 else flux_volume
+
+            # Handle upward flux (negative volume) limitations similarly.
+            if flux_volume < 0:
+                # Limit water flowing out of the lower layer.
+                available_water_vol_lower = max(0, (theta_new[i] - self.theta_eff_residual[i])) * self.dz[i]
+                flux_volume = max(flux_volume, -available_water_vol_lower)
+                # Limit water flowing into the upper layer.
+                available_space_vol_upper = max(0, (self.theta_eff_sat[i-1] - theta_new[i-1])) * self.dz[i-1]
+                flux_volume = max(flux_volume, -available_space_vol_upper)
+
+            # Update water content in the two layers based on the flux volume.
+            # upper layer
+            theta_new[i - 1] -= flux_volume / self.dz[i - 1]
+            # lower layer
+            theta_new[i] += flux_volume / self.dz[i]
+
+        # 2. Handle Surface Infiltration (Top Boundary Condition)
+        infl, runoff = calculate_top_flux_infiltration(R, h_current, self.pars, self.dz, self.Infiltration_So_Far,
+                                                       theta_prev, self.theta_eff_sat)
+
+        available_storage_vol = max(0, (self.theta_eff_sat[0] - theta_new[0]) * self.dz[0])
+        actual_infl = min(infl, available_storage_vol)
+        runoff += (infl - actual_infl)
+
+        # Add infiltrated water volume to the top soil layer.
+        theta_new[0] += actual_infl / self.dz[0]
 
         # Final deep percolation is the volume per unit area.
         deep_percolation = deep_percolation_volume
