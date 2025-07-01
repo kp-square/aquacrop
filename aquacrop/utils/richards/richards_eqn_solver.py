@@ -472,7 +472,7 @@ class RichardEquationSolver:
             hydraulic_gradient = (head_i - head_i_plus_1) / dz_interface
 
             # Calculate water flux per unit area using Darcy's Law (q = -K * dH/dz).
-            flux_per_area = -K_interface * hydraulic_gradient
+            flux_per_area = K_interface * hydraulic_gradient
 
             # Calculate the total volume of water moving across the interface in this timestep.
             flux_volume = flux_per_area * self.dt
