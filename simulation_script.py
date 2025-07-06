@@ -45,7 +45,10 @@ def run_simulation(args):
         irr_sch = expobj.irr[['DATE', 'irr_depth']]
         desc = irr_sch.isna().sum()
         irr_sch = irr_sch.rename({'DATE': 'Date', 'irr_depth': 'Depth'}, axis=1)
-        irrmethod = IrrigationManagement(irrigation_method=3, Schedule=irr_sch)
+        if args.use_irrigation:
+            irrmethod = IrrigationManagement(irrigation_method=3, Schedule=irr_sch)
+        else:
+            irrmethod = IrrigationManagement(irrigation_method=2)
 
         TARGET_TOP_LAYER_THICKNESS = 0.02
         TOLERANCE = 0.005
@@ -164,6 +167,7 @@ def main():
     parser.add_argument("--WP", type=float, required=True, default=33.3)
     parser.add_argument("--HI0", type=float, required=True, default=0.48)
     parser.add_argument("--run_count", type=int, required=True, default=1)
+    parser.add_argument("--use_irrigation", type=str_to_bool, required=True, default=True)
     args = parser.parse_args()
     run_simulation(args)
 
@@ -180,4 +184,5 @@ if __name__=='__main__':
     args['WP'] = 12
     args['HI0'] = 0.27
     args['run_count'] = 1
+    args['user_irrigation'] = True
     run_simulation(types.SimpleNamespace(**args))
