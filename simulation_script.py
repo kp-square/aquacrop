@@ -1,7 +1,7 @@
 import argparse
 import types
 
-from aquacrop import AquaCropModel, Soil, Crop, InitialWaterContent, IrrigationManagement
+from aquacrop import AquaCropModel, SoilGeorgia, Crop, InitialWaterContent, IrrigationManagement
 from aquacrop.utils import prepare_weather, get_filepath
 from dataset.dataobjects import SoilType, ExpData
 import pickle
@@ -10,12 +10,12 @@ import time
 
 '''
 class ExpData:
-    def __init__(self, treatment_id, sirp_id, crop_type, year, irr_method, fert_method, lint_yield, start_date, end_date, irr):
+    def __init__(self, treatment_id, sirp_id, crop_type, year, irr_method, fert_method, crop_yield, start_date, end_date, irr):
         self.crop_type = crop_type
         self.year = year
         self.irr_method = irr_method
         self.fert_method = fert_method
-        self.lint_yield = lint_yield
+        self.crop_yield = crop_yield
         self.irr = irr # dataframe
         self.treatment_id = treatment_id
         self.start_date = start_date
@@ -47,9 +47,12 @@ def run_simulation(args):
         irr_sch = irr_sch.rename({'DATE': 'Date', 'irr_depth': 'Depth'}, axis=1)
         irrmethod = IrrigationManagement(irrigation_method=3, Schedule=irr_sch)
 
+        TARGET_TOP_LAYER_THICKNESS = 0.02
+        TOLERANCE = 0.005
         dzz = []
         soil_types = []
         prev = 0.0
+
         for typ in expobj.soil_types:
             typ.depth = round(typ.depth, 2)
             if not typ.soil_type:
@@ -62,21 +65,40 @@ def run_simulation(args):
             soil_types.append(typ.soil_type)
             prev = typ.depth
 
-        # Make at least 10 layers of soil, extend the last layer
-        while len(dzz) < 10:
+        # Ensure the top layer has thickness equal to 2 cm only.
+        if dzz and dzz[0] > (TARGET_TOP_LAYER_THICKNESS + TOLERANCE):
+            original_first_layer_thickness = dzz[0]
+            original_first_layer_type = soil_types[0]
+
+            remainder_thickness = original_first_layer_thickness - TARGET_TOP_LAYER_THICKNESS
+
+            dzz[0] = TARGET_TOP_LAYER_THICKNESS
+            dzz.insert(1, round(remainder_thickness, 2))
+
+            soil_types.insert(1, original_first_layer_type)
+
+        # Make at least 12 layers of soil, extend the last layer
+        # Make the total depth of soil profile at least crop.maxZ + 0.1
+        while len(dzz) < 12:
             dzz.append(dzz[-1])
             soil_types.append(soil_types[-1])
 
-        soil = Soil(soil_type=soil_types, dz=dzz)
+        soil = SoilGeorgia(soil_type=soil_types, dz=dzz)
         step_size = 'H' if args.hourly else 'D'
-
+        # source: https://open.clemson.edu/cgi/viewcontent.cgi?article=2297&context=all_theses
+        cotton_params = {'CGC_CD':0.10, 'CDC_CD':0.029, 'CCx':0.98, 'Kcb':1.1, 'Zx':1.2, 'WP':args.WP, 'HI0':args.HI0, 'EmergenceCD':3, 'SenescenceCD': 100, 'MaturityCD': 160, 'FloweringCD':42, 'Tbase':15.6, 'SwitchGDD':1}
+        # I may need to test for corn later
+        # source: https://extension.missouri.edu/media/wysiwyg/Extensiondata/CountyPages/Scott/Irrigation/Estimated-Water-Use-Corn-Georgia.pdf
+        # source: https://www.sciencedirect.com/science/article/pii/S0378377418317128?casa_token=3li4XZy-0EIAAAAA:sz1Z1SeThgCzLiVUpZ6JqB0Le_b9ipfAZsexuLDjgHRmyLZi9jzQUP-HvFvriLw1TZioBxnjHA
+        corn_params = {'CCx':0.94, 'Zx':2.1, 'CGC_CD':0.137, 'Kcb':1.05, 'HI0':args.HI0, 'WP':args.WP, 'p_up1':0.14, 'p_lo1':0.72, 'EmergenceCD':7, 'MaxRootingCD':79, 'SenescenceCD':105, 'Tbase':10, 'MaturityCD':122, 'FloweringCD':15, "HIstartCD":80, 'YldFormCD':35, 'SwitchGDD':1}
+        params = {'cotton': cotton_params, 'corn': corn_params}
         crop_type = 'Maize' if args.crop_type == 'corn' else args.crop_type.capitalize()
         model_os = AquaCropModel(
             sim_start_time=f'{start_date.year}/{start_date.month}/{start_date.day}',
             sim_end_time=f'{end_date.year}/{end_date.month}/{end_date.day}',
             weather_df=prepare_weather(weather_file_path, hourly = args.hourly),
             soil=soil,
-            crop=Crop(crop_type, planting_date=f'{start_date.month}/{start_date.day}', WP=args.WP, HI0=args.HI0),
+            crop=Crop(crop_type, planting_date=f'{start_date.month}/{start_date.day}', **params[args.crop_type]),
             initial_water_content=InitialWaterContent(value=['FC']*soil.nComp, method="Layer", depth_layer=soil.profile.Layer),
             irrigation_management=irrmethod,
             step_size=step_size,
@@ -85,9 +107,39 @@ def run_simulation(args):
 
         model_os.run_model(till_termination=True)
         model_results_df = model_os.get_simulation_results()
-        simulated_yield = model_results_df['Dry yield (tonne/ha)'].iloc[0]
-        sq_err = (simulated_yield - expobj.lint_yield)**2
-        return sq_err
+        return model_results_df, expobj
+
+
+def run_simulation_and_get_balance(args):
+    model_results_df, expobj = run_simulation(args)
+    result  = {}
+    result['irr'] = model_results_df["Seasonal irrigation (mm)"].iloc[0]
+    result['rain'] = model_results_df["Seasonal rainfall (mm)"].iloc[0]
+    result['es'] = model_results_df["Evaporation (mm)"].iloc[0]
+    result['tr'] = model_results_df["Transpiration (mm)"].iloc[0]
+    result['dp'] = model_results_df["Deep Percolation (mm)"].iloc[0]
+    result['runoff'] = model_results_df["Runoff (mm)"].iloc[0]
+    result['infl'] = model_results_df["Seasonal Infiltration (mm)"].iloc[0]
+    result['balance'] = model_results_df["Balance (mm)"].iloc[0]
+    result['sim_yield'] = model_results_df["Dry yield (tonne/ha)"].iloc[0]
+    result['actual_yield'] = expobj.crop_yield
+    result['year'] = expobj.year
+    result['crop'] = expobj.crop_type
+    result['sirp_id'] = expobj.sirp_id
+    result['treatment_id'] = expobj.treatment_id
+    result['irr_method'] = expobj.fert_method
+    for key in result.keys():
+        if isinstance(result[key], float):
+            result[key] = round(result[key], 2)
+    return result
+
+def run_simulation_and_get_yield_error(args):
+    model_results_df, expobj = run_simulation(args)
+    simulated_yield = model_results_df['Dry yield (tonne/ha)'].iloc[0]
+    abs_err = abs(simulated_yield - expobj.crop_yield)
+    sq_err = abs_err ** 2
+    perc_err = abs_err/expobj.crop_yield
+    return sq_err, perc_err
 
 def str_to_bool(value: str) -> bool:
     """Converts a string representation of truth to True or False."""
@@ -119,10 +171,10 @@ def main():
 if __name__=='__main__':
     x = 123
     args = {}
-    args['crop_type'] = 'Cotton'
-    args['year'] = 2019
-    args['treatment_id'] = 3
-    args['sirp_id'] = 114
+    args['crop_type'] = 'corn'
+    args['year'] = 2018
+    args['treatment_id'] = 8
+    args['sirp_id'] = 132
     args['hourly'] = True
     args['use_richards'] = True
     args['WP'] = 12

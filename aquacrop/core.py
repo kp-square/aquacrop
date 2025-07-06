@@ -41,6 +41,7 @@ from .timestep.run_single_timestep_richards import solution_single_time_step_ric
 from .timestep.run_single_timestep_richards_hybrid import  solution_single_time_step_richards_hybrid
 from .timestep.update_time import update_time
 from .timestep.outputs_when_model_is_finished import outputs_when_model_is_finished
+from .utils.resample import resample_from_hourly_to_daily
 
 class AquaCropModel:
     """
@@ -229,9 +230,14 @@ class AquaCropModel:
         # get _weather data
         self.weather_df = read_weather_inputs(self._clock_struct, self.weather_df)
 
+        if self.step_size == 'h':
+            daily_weather_df = resample_from_hourly_to_daily(self.weather_df)
+        else:
+            daily_weather_df = self.weather_df
+
         # read model params
         self._clock_struct, self._param_struct = read_model_parameters(
-            self._clock_struct, self.soil, self.crop, self.weather_df
+            self._clock_struct, self.soil, self.crop, daily_weather_df
         )
 
         # read irrigation management
@@ -251,8 +257,10 @@ class AquaCropModel:
 
         # Compute additional variables
         self._param_struct.CO2 = self.co2_concentration
+
+
         self._param_struct = compute_variables(
-            self._param_struct, self.weather_df, self._clock_struct
+            self._param_struct, daily_weather_df, self._clock_struct
         )
 
         # read, calculate inital conditions

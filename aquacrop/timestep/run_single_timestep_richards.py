@@ -1,6 +1,7 @@
 import numpy as np
 import copy
 from aquacrop.entities.output import Output
+import pickle
 
 # TEMP FOR TROUBLESHOOTING:
 from pprint import pprint
@@ -34,8 +35,10 @@ from ..solution.HIref_current_day import HIref_current_day
 from ..solution.biomass_accumulation import biomass_accumulation
 from ..utils.richards.plots import plot_crop_simulation_data
 from ..utils.richards.richards_utils import irrigation_dissociation
+from ..optim.dataobjects import InputState, OutputState
 
 from typing import Tuple, TYPE_CHECKING
+import time
 
 if TYPE_CHECKING:
     # Important: classes are only imported when types are checked, not in production.
@@ -88,7 +91,7 @@ def solution_single_time_step_richards(
     temp_max = max(temp_mean)
     et0 = weather_step[:,2]
     precipitation_daily = sum(precipitation)
-
+    t_start = time.time()
     # Store initial conditions in structure for updating %%
     NewCond = init_cond
     if param_struct.water_table == 1:
@@ -167,7 +170,7 @@ def solution_single_time_step_richards(
 
     crop = Crop_
     total_water_begin = sum(NewCond.th * Soil.profile.dz) * 1000
-
+    init_root_z = NewCond.z_root
     # Run simulations %%
     # 1. Check for groundwater table (Run once daily before hourly loop)
     NewCond.th_fc_Adj, NewCond.wt_in_soil, NewCond.z_gw = check_groundwater_table(
@@ -266,6 +269,7 @@ def solution_single_time_step_richards(
         Runoff
     )
 
+
     # Initialize daily accumulators
 
     Tr_daily = 0
@@ -278,18 +282,22 @@ def solution_single_time_step_richards(
     Runoff_daily = 0
     Infl_daily = 0
     Irr_applied_daily = 0  # Keep track of irrigation actually applied
+    Precip_so_far = 0.0
+    Irr_so_far = 0.0
 
     # Store the state at the beginning of the day (start of the hourly loop)
     PrevCond = copy.deepcopy(NewCond)
+    instate = InputState(precipitation, et0, temp_min, temp_max, NewCond.gdd, NewCond.dap, init_root_z, NewCond.canopy_cover, NewCond.th, NewCond.biomass)
+
 
     Infl = 0.0
     hourly_irrigation = irrigation_dissociation(Irr)
-    solver = RichardEquationSolver(Soil.profile, PrevCond, time_step='h')
+    solver = RichardEquationSolver(Soil.profile, PrevCond, param_struct, time_step='h', use_root_uptake=True)
     # --- Hourly Loop --- #
     for hour in range(24):
-        prev = sum(NewCond.th * Soil.profile.dz) * 1000
         et0_hr = et0[hour]
         precipitation_hr = precipitation[hour]
+        irr_hr = hourly_irrigation[hour]
         '''
         NewCond_Depletion (float): soil water depletion
         NewCond_TAW (float): total available water
@@ -386,24 +394,28 @@ def solution_single_time_step_richards(
             et0_hr,
             Infl,
             precipitation_hr,
-            Irr,
+            irr_hr,
             growing_season,
         )
 
         Es_daily += Es
         EsPot_daily += EsPot
         # NewCond.th has the volumetric water content for each compartment
-
-        converged, new_th, DeepPerc, Runoff, Infl, FluxOut, _, _ = solver.solve(hour, NewCond,
-                                                                                    hourly_irrigation[hour],
+        Irr_so_far += irr_hr
+        Precip_so_far += precipitation_hr
+        converged, new_th, DeepPerc, Runoff, Infl, FluxOut = solver.solve(hour, NewCond,
+                                                                                    irr_hr,
                                                                                     precipitation_hr)
-        if converged:
-            NewCond.th = new_th
-            DeepPerc_daily += DeepPerc*1000
-            Runoff_daily += Runoff*1000
-            Infl_daily += Infl*1000
+        #if converged:
+        NewCond.th = new_th
+        DeepPerc_daily += DeepPerc*1000
+        Runoff_daily += Runoff*1000
+        Infl_daily += Infl*1000
 
-
+        total_water_now = sum(NewCond.th * Soil.profile.dz) * 1000
+        err = total_water_begin - total_water_now - DeepPerc_daily - Runoff_daily - Es_daily - Tr_daily + Irr_so_far + Precip_so_far
+        if abs(err) > 0.2:
+            print('lot of error')
     NewCond = transpiration_post_daily(NewCond, Tr_daily, TrPot_daily, growing_season)
 
     # 15. Reference harvest index
@@ -483,7 +495,6 @@ def solution_single_time_step_richards(
     # Update model outputs %%
     row_day = clock_struct.time_step_counter
     row_gs = clock_struct.season_counter
-    print(row_day)
     # Irrigation
     if growing_season is True:
         if IrrMngt.irrigation_method == 4:
@@ -502,6 +513,12 @@ def solution_single_time_step_richards(
         NewCond.depletion = _water_root_depletion.Rz
         NewCond.taw = _TAW.Rz
 
+    outstate = OutputState(NewCond.canopy_cover - PrevCond.canopy_cover, NewCond.z_root - init_root_z, Es_daily, Tr_daily,
+                           NewCond.biomass - PrevCond.biomass, NewCond.DryYield - PrevCond.DryYield,
+                           NewCond.th - PrevCond.th, DeepPerc_daily, Runoff_daily)
+
+    outputs.instates.append(instate)
+    outputs.outstates.append(outstate)
     # Water contents
     outputs.water_storage[row_day, :3] = np.array(
         [clock_struct.time_step_counter, growing_season, NewCond.dap]
@@ -538,9 +555,9 @@ def solution_single_time_step_richards(
         total_water_begin + Infl_daily - Es_daily - Tr_daily - DeepPerc_daily - total_water_end
     ]
 
-    if row_day == 174:
-        desc = outputs.water_flux.describe()
-        plot_crop_simulation_data(outputs.water_flux, f'hourly_sim_plot.png')
+    # if row_day == 174:
+    #     desc = outputs.water_flux.describe()
+    #     plot_crop_simulation_data(outputs.water_flux, hourly_sim_plot.png')
 
     # Crop growth
     outputs.crop_growth[row_day, :] = [
@@ -560,7 +577,7 @@ def solution_single_time_step_richards(
         NewCond.FreshYield,
         NewCond.YieldPot,
     ]
-
+    print('Day:', row_day, time.time() - t_start)
     # Final output (if at end of growing season)
     if clock_struct.season_counter > -1:
         if (
@@ -572,6 +589,16 @@ def solution_single_time_step_richards(
             )
         ) and (NewCond.harvest_flag is False):
             desc = outputs.water_flux.describe()
+
+            total_rainfall = outputs.water_flux['precipitation'].sum()
+            total_infl = outputs.water_flux['Infl'].sum()
+            total_runoff = outputs.water_flux['Runoff'].sum()
+            total_irr = outputs.water_flux['IrrDay'].sum()
+            total_es = outputs.water_flux['Es'].sum()
+            total_tr  = outputs.water_flux['Tr'].sum()
+            total_dp = outputs.water_flux['DeepPerc'].sum()
+            total_err = outputs.water_flux['balance'].abs().sum()
+
             # Store final outputs
             outputs.final_stats.loc[row_gs] = [
                 clock_struct.season_counter,
@@ -582,7 +609,22 @@ def solution_single_time_step_richards(
                 NewCond.FreshYield,
                 NewCond.YieldPot,
                 IrrTot,
+                total_rainfall,
+                total_es,
+                total_tr,
+                total_dp,
+                total_runoff,
+                total_infl,
+                total_err
             ]
+            # try:
+            #     with open('aquacrop/optim/train_data.pkl', 'wb') as f:
+            #         obj = (instate, outstate)
+            #         pickle.dump((hash(obj), obj), f)
+            # except:
+            #     print('error')
+
+
 
             # Set harvest flag
             NewCond.harvest_flag = True

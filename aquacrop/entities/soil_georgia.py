@@ -4,7 +4,7 @@ import numpy as np
 from .modelConstants import ModelConstants
 
 
-class Soil:
+class SoilGeorgia:
     """
     The Soil Class contains Paramaters and variables of the soil used in the simulation
 
@@ -168,49 +168,49 @@ class Soil:
                 self.cn = 46
                 self.calc_cn = 0
                 self.rew = 5
-            self.add_layer(sum(dz), 0.08, 0.16, 0.38, 2200, 100, 0.057, 12.4, 2.28, 0.5)
+            self.add_layer(sum(dz), 0.044, 0.096, 0.395, 1602, 100, 0.042, 12.4, 2.28, 0.5)
 
         elif soil_type == "FineSand":
             if first_layer:
                 self.cn = 46
                 self.calc_cn = 0
                 self.rew = 5
-            self.add_layer(sum(dz), 0.07, 0.15, 0.404, 2300, 100, 0.050, 13.1, 2.38, 0.5)
+            self.add_layer(sum(dz), 0.025, 0.063, 0.409, 2675, 100, 0.019, 13.1, 2.38, 0.5)
 
         elif soil_type == "Sand":
             if first_layer:
                 self.cn = 46
                 self.calc_cn = 0
                 self.rew = 4
-            self.add_layer(sum(dz), 0.06, 0.13, 0.36, 3000, 100, 0.045, 14.5, 2.68, 0.5)
+            self.add_layer(sum(dz), 0.007, 0.043, 0.421, 4348, 100, 0.005, 14.5, 2.68, 0.5)
 
         elif soil_type == "SandyClay":
             if first_layer:
                 self.cn = 77
                 self.calc_cn = 0
                 self.rew = 10
-            self.add_layer(sum(dz), 0.27, 0.39, 0.38, 28.8, 100, 0.1, 2.7, 1.23, 0.5)
+            self.add_layer(sum(dz), 0.17, 0.39, 0.41, 28.8, 100, 0.1, 2.7, 1.23, 0.5)
 
         elif soil_type == "SandyClayLoam":
             if first_layer:
                 self.cn = 72
                 self.calc_cn = 0
                 self.rew = 9
-            self.add_layer(sum(dz), 0.20, 0.32, 0.47, 225, 100, 0.1, 5.9, 1.48, 0.5)
+            self.add_layer(sum(dz), 0.172, 0.241, 0.385, 164, 100, 0.137, 5.9, 1.48, 0.5)
 
         elif soil_type == "SandyLoam":
             if first_layer:
                 self.cn = 46
                 self.calc_cn = 0
                 self.rew = 7
-            self.add_layer(sum(dz), 0.10, 0.22, 0.41, 1200, 100, 0.065, 7.5, 1.89, 0.5)
+            self.add_layer(sum(dz), 0.076, 0.127, 0.387, 988, 100, 0.064, 7.5, 1.89, 0.5)
 
         elif soil_type == "LoamyFineSand":
             if first_layer:
                 self.cn = 46
                 self.calc_cn = 0
                 self.rew = 6
-            self.add_layer(sum(dz), 0.07, 0.15, 0.394, 1535, 100, 0.043, 10.5, 1.95, 0.5)
+            self.add_layer(sum(dz), 0.032, 0.077, 0.402, 2113, 100, 0.029, 10.5, 1.95, 0.5)
 
         elif soil_type == "Silt":
             if first_layer:
@@ -471,7 +471,7 @@ class Soil:
             aCR =  0
             bCR =  0
 
-            # Define aCR and bCR calculations for each Soil Class 
+            # Define aCR and bCR calculations for each Soil Class
             aCR_sandy=-0.3112 - Ksat/100000
             bCR_sandy=-1.4936 + 0.2416*np.log(Ksat)
 

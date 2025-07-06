@@ -30,7 +30,6 @@ depth=1.000"""
 
 import numpy as np
 import pandas as pd
-import pvlib
 from datetime import datetime, timedelta
 
 def get_array(table):
