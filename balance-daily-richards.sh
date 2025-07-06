@@ -3,8 +3,8 @@
 #PBS -N Aquacrop_richards_daily
 #SBATCH --nodes=1
 #SBATCH --tasks-per-node=1
-#SBATCH --cpus-per-task=54
-#SBATCH --mem=64gb
+#SBATCH --cpus-per-task=27
+#SBATCH --mem=96gb
 #SBATCH --time=72:00:00
 #SBATCH --output=Aquacrop_richards_daily.out
 
