@@ -15,8 +15,8 @@ def compute_balance_process( hourly, use_richards):
     df_filter = df[(df['crop_type'] != 'peanut')]
     # df_filter = df[(df['crop_type'] == 'cotton') & (df['sirp_id'] == 217) & (df['treatment_id'] == 3)]
     # df_filter = df[(df['crop_type'] == 'corn') & (df['sirp_id'] == 314) & (df['treatment_id'] == 2)]
-    wp = {'corn': 27.0, 'cotton':0.48}
-    hi0 = {'corn': 12.0, 'cotton':0.27}
+    wp = {'corn': 32.0, 'cotton':12.0}
+    hi0 = {'corn': 0.55, 'cotton':0.30}
     allargs = []
     for _, row in df_filter.iterrows():
         crop_type = row.get('crop_type')
