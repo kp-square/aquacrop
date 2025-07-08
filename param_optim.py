@@ -53,6 +53,7 @@ def run_processes(crop_type, years, wp, hi0, run_count, hourly, use_richards):
         args['WP'] = wp
         args['HI0'] = hi0
         args['run_count'] = run_count
+        args['use_irrigation'] = True
         allargs.append(types.SimpleNamespace(**args))
     sq_errors = []
     perc_errors = []
