@@ -48,7 +48,7 @@ def run_simulation(args):
         if args.use_irrigation:
             irrmethod = IrrigationManagement(irrigation_method=3, Schedule=irr_sch)
         else:
-            irrmethod = IrrigationManagement(irrigation_method=2)
+            irrmethod = IrrigationManagement(irrigation_method=0)
 
         TARGET_TOP_LAYER_THICKNESS = 0.02
         TOLERANCE = 0.005
