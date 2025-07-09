@@ -498,7 +498,8 @@ def solution_single_time_step(
         Tr,
         TrPot,
         total_water,
-        total_water_start + Infl - Es - Tr - DeepPerc - total_water_end
+        total_water_start + Infl - Es - Tr - DeepPerc - total_water_end,
+        0.0
     ]
 
     if row_day == 174:
@@ -560,7 +561,8 @@ def solution_single_time_step(
                 total_dp,
                 total_runoff,
                 total_infl,
-                total_err
+                total_err,
+                0.0
             ]
 
             # Set harvest flag

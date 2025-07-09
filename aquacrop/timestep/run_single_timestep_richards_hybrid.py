@@ -273,6 +273,7 @@ def solution_single_time_step_richards_hybrid(
             DeepPerc += _DeepPerc
             Runoff += _Runoff
             Infl += _Infl
+        solverd.total_fallback_mins += solverh.total_fallback_mins
 
     # 9. Check germination
     NewCond = germination(
@@ -498,7 +499,8 @@ def solution_single_time_step_richards_hybrid(
         Tr,
         TrPot,
         total_water_begin,
-        total_water_begin + (Infl*1000) - Es - Tr - (DeepPerc*1000) - total_water_end
+        total_water_begin + (Infl*1000) - Es - Tr - (DeepPerc*1000) - total_water_end,
+        solverd.total_fallback_mins
     ]
     outstate = OutputState(NewCond.canopy_cover - PrevCond.canopy_cover, NewCond.z_root-init_root_z, Es, Tr, NewCond.biomass-PrevCond.biomass, NewCond.DryYield-PrevCond.DryYield, NewCond.th-PrevCond.th, DeepPerc*1000, Runoff)
     outputs.instates.append(instate)
@@ -548,6 +550,7 @@ def solution_single_time_step_richards_hybrid(
             total_tr = outputs.water_flux['Tr'].sum()
             total_dp = outputs.water_flux['DeepPerc'].sum()
             total_err = outputs.water_flux['balance'].abs().sum()
+            total_fallback = (outputs.water_flux['richards_fallback'].sum() / (row_day * 24 * 60))*100
 
             outputs.final_stats.loc[row_gs] = [
                 clock_struct.season_counter,
@@ -564,7 +567,8 @@ def solution_single_time_step_richards_hybrid(
                 total_dp,
                 total_runoff,
                 total_infl,
-                total_err
+                total_err,
+                total_fallback
             ]
 
             # Set harvest flag

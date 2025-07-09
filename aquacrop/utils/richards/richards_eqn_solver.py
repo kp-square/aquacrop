@@ -248,6 +248,7 @@ class RichardEquationSolver:
         self.h_eff_sat = np.full(self.Nz, self.SATURATION_THRESHOLD_h)
         self.theta_eff_sat = thetaf(self.h_eff_sat, self.pars)
         self.theta_eff_residual = thetaf(np.ones(self.Nz) * -30.0, self.pars)
+        self.total_fallback_mins = 0
 
     def solve(self, step, new_cond, irrigation, rainfall):
         R = (rainfall + irrigation)/1000.0
@@ -398,6 +399,7 @@ class RichardEquationSolver:
                     runoff += _runoff
                     infl += _infl
                     deep_percolation += _deep_perc
+                self.total_fallback_mins += solver.total_fallback_mins
         elif not converged:
             dry_soil = False
             theta_current, deep_percolation, runoff, infl, K_current = self.handle_non_convergence_bottom_up(R, theta_prev_prev, root_water_uptake)
@@ -530,6 +532,7 @@ class RichardEquationSolver:
         only with timestep of 1 minute.
         """
         # Start with the water content from the beginning of the timestep
+        self.total_fallback_mins += 1
         steps = 1
         pars_sec = copy.deepcopy(self.pars)
         pars_sec['Ks'] = self.pars['Ks']/steps

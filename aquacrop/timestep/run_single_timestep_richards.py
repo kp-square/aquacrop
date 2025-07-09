@@ -552,7 +552,8 @@ def solution_single_time_step_richards(
         Tr_daily,
         TrPot_daily,
         total_water_begin,
-        total_water_begin + Infl_daily - Es_daily - Tr_daily - DeepPerc_daily - total_water_end
+        total_water_begin + Infl_daily - Es_daily - Tr_daily - DeepPerc_daily - total_water_end,
+        solver.total_fallback_mins
     ]
 
     # if row_day == 174:
@@ -598,6 +599,7 @@ def solution_single_time_step_richards(
             total_tr  = outputs.water_flux['Tr'].sum()
             total_dp = outputs.water_flux['DeepPerc'].sum()
             total_err = outputs.water_flux['balance'].abs().sum()
+            total_fallback = (outputs.water_flux['richards_fallback'].sum() / (row_day * 24 * 60)) * 100 #percentage
 
             # Store final outputs
             outputs.final_stats.loc[row_gs] = [
@@ -615,7 +617,8 @@ def solution_single_time_step_richards(
                 total_dp,
                 total_runoff,
                 total_infl,
-                total_err
+                total_err,
+                total_fallback
             ]
             # try:
             #     with open('aquacrop/optim/train_data.pkl', 'wb') as f:

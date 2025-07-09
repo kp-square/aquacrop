@@ -9,18 +9,17 @@ import csv
 from typing import List, Dict, Any
 import argparse
 
-def compute_balance_process( hourly, use_richards, use_irrigation, texture=None):
-    # no. of cores  = 54
+def compute_balance_process_for_textures( hourly, use_richards, use_irrigation):
+    # no. of cores  = 4
     df = pd.read_csv('crop_metadata.csv')
     df_filter = df[(df['crop_type'] != 'peanut')]
-    # df_filter = df[(df['crop_type'] == 'cotton') & (df['sirp_id'] == 217) & (df['treatment_id'] == 3)]
-    if texture:
-        df_filter = df[(df['crop_type'] == 'corn') & (df['sirp_id'] == 314) & (df['treatment_id'] == 2)]
-
+    df_filter = df[(df['crop_type'] == 'corn') & (df['sirp_id'] == 314) & (df['treatment_id'] == 2)]
+    textures = ['ClayLoam', 'Loam', 'SandyLoam','LoamySand']
+    _, row = next(df_filter.iterrows())
     wp = {'corn': 33.7, 'cotton':12.9}
     hi0 = {'corn': 0.58, 'cotton':0.33}
     allargs = []
-    for _, row in df_filter.iterrows():
+    for texture in textures:
         crop_type = row.get('crop_type')
         args = {}
         args['crop_type'] = crop_type
@@ -41,13 +40,12 @@ def compute_balance_process( hourly, use_richards, use_irrigation, texture=None)
             all_results.append(result)
 
     postfix = '' if use_irrigation else '_no_irr'
-    postfix += '' if not texture else f'_{texture}'
     if hourly and use_richards:
-        filename = f'hourly_richards_balance{postfix}.csv'
+        filename = f'texture_hourly_richards_balance{postfix}.csv'
     elif use_richards:
-        filename = f'daily_richards_balance{postfix}.csv'
+        filename = f'texture_daily_richards_balance{postfix}.csv'
     else:
-        filename = f'daily_aquacrop_balance{postfix}.csv'
+        filename = f'texture_daily_aquacrop_balance{postfix}.csv'
     save_dicts_to_csv(all_results, filename)
 
 def save_dicts_to_csv(data_list: List[Dict[str, Any]], file_path: str) -> None:
@@ -74,11 +72,9 @@ def main():
     hourly = args.hourly
     use_richards = args.use_richards
     use_irrigation = args.use_irrigation
-    texture = args.texture
-    print(hourly, use_richards, texture)
-    compute_balance_process(hourly, use_richards, use_irrigation, texture)
+    compute_balance_process_for_textures(hourly, use_richards, use_irrigation)
 
 if __name__=='__main__':
-    compute_balance_process(False, False, False)
-    # main()
+    compute_balance_process_for_textures(False, False, False)
+    #main()
 
