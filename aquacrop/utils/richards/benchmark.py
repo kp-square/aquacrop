@@ -37,29 +37,56 @@ def parse_hydrus_output(file_path):
 def plot(hydrus, richards, depth):
     hydrus_head, hydrus_theta = hydrus
     richards_head, richards_theta = richards
-    # implement code to plot head vs depth and theta vs depth for both in same graph, make one as (dashes, red) and the other as (line, green)
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    # Set up professional styling
+    plt.style.use('seaborn-v0_8-whitegrid')  # Use seaborn style for cleaner look
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 8))
+
+    # Define professional colors and styling
+    colors = {'hydrus': '#E31A1C', 'richards': '#2E8B57'}  # Professional red and green
+    linewidth = 2.5
+    markersize = 4
 
     # Plot Head vs Depth
-    ax1.plot(hydrus_head, depth, color='red', linestyle='--', label='Hydrus Head')
-    ax1.plot(richards_head, depth, color='green', linestyle='-', label='Richards Head')
-    ax1.set_xlabel("Head [L]")
-    ax1.set_ylabel("Depth [L]")
-    ax1.set_title("Head vs. Depth")
-    ax1.grid(True, linestyle=':', alpha=0.6)
-    ax1.legend()
+    ax1.plot(hydrus_head, depth, color=colors['hydrus'], linestyle='--',
+             linewidth=linewidth, label='HYDRUS-1D', alpha=0.8)
+    ax1.plot(richards_head, depth, color=colors['richards'], linestyle='-',
+             linewidth=linewidth, label='Our implementation of Richards Equation', alpha=0.8)
+
+    ax1.set_xlabel('Pressure Head [m]', fontsize=12, fontweight='bold')
+    ax1.set_ylabel('Depth [m]', fontsize=12, fontweight='bold')
+    ax1.set_title('Pressure Head Profile', fontsize=14, fontweight='bold', pad=20)
+    ax1.grid(True, linestyle=':', alpha=0.4, color='gray')
+    ax1.legend(loc='best', frameon=True, fancybox=True, shadow=True, fontsize=10)
+    ax1.tick_params(axis='both', which='major', labelsize=10)
 
     # Plot Moisture vs Depth
-    ax2.plot(hydrus_theta, depth, color='red', linestyle='--', label='Hydrus Moisture')
-    ax2.plot(richards_theta, depth, color='green', linestyle='-', label='Richards Moisture')
-    ax2.set_xlabel("Moisture [-]")
-    ax2.set_ylabel("Depth [L]")
-    ax2.set_title("Moisture vs. Depth")
-    ax2.grid(True, linestyle=':', alpha=0.6)
-    ax2.legend()
+    ax2.plot(hydrus_theta, depth, color=colors['hydrus'], linestyle='--',
+             linewidth=linewidth, label='HYDRUS-1D', alpha=0.8)
+    ax2.plot(richards_theta, depth, color=colors['richards'], linestyle='-',
+             linewidth=linewidth, label='Our implementation of Richards Equation', alpha=0.8)
 
-    plt.tight_layout()
-    plt.savefig('hydrus_vs_richards.png')
+    ax2.set_xlabel('Volumetric Water Content', fontsize=12, fontweight='bold')
+    ax2.set_ylabel('Depth [m]', fontsize=12, fontweight='bold')
+    ax2.set_title('Water Content Profile', fontsize=14, fontweight='bold', pad=20)
+    ax2.grid(True, linestyle=':', alpha=0.4, color='gray')
+    ax2.legend(loc='best', frameon=True, fancybox=True, shadow=True, fontsize=10)
+    ax2.tick_params(axis='both', which='major', labelsize=10)
+
+    # Invert y-axis to show depth increasing downward (standard convention)
+    ax1.invert_yaxis()
+    ax2.invert_yaxis()
+
+    # Add subtle background color
+    fig.patch.set_facecolor('white')
+    ax1.set_facecolor('#FAFAFA')
+    ax2.set_facecolor('#FAFAFA')
+
+    # Adjust layout and spacing
+    plt.tight_layout(pad=3.0)
+
+    # Save with high DPI for publication quality
+    plt.savefig('hydrus_vs_richards_comparison.png', dpi=300, bbox_inches='tight',
+                facecolor='white', edgecolor='none')
     plt.show()
 
 

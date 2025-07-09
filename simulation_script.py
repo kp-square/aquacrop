@@ -50,41 +50,42 @@ def run_simulation(args):
         else:
             irrmethod = IrrigationManagement(irrigation_method=0)
 
-        TARGET_TOP_LAYER_THICKNESS = 0.02
-        TOLERANCE = 0.005
-        dzz = []
-        soil_types = []
-        prev = 0.0
-
-        for typ in expobj.soil_types:
-            typ.depth = round(typ.depth, 2)
-            if not typ.soil_type:
-                typ.soil_type = 'Loamy Fine Sand'
-            splits = typ.soil_type.split(' ')
-            splits = [x.capitalize() for x in splits]
-            typ.soil_type = ''.join(splits)
-            typ.soil_type = 'SandyClayLoam' if typ.soil_type == 'SadnyClayLoam' else typ.soil_type
-            dzz.append(round(typ.depth - prev, 2))
-            soil_types.append(typ.soil_type)
-            prev = typ.depth
-
-        # Ensure the top layer has thickness equal to 2 cm only.
-        if dzz and dzz[0] > (TARGET_TOP_LAYER_THICKNESS + TOLERANCE):
-            original_first_layer_thickness = dzz[0]
-            original_first_layer_type = soil_types[0]
-
-            remainder_thickness = original_first_layer_thickness - TARGET_TOP_LAYER_THICKNESS
-
-            dzz[0] = TARGET_TOP_LAYER_THICKNESS
-            dzz.insert(1, round(remainder_thickness, 2))
-
-            soil_types.insert(1, original_first_layer_type)
-
-        # Make at least 12 layers of soil, extend the last layer
-        # Make the total depth of soil profile at least crop.maxZ + 0.1
-        while len(dzz) < 12:
-            dzz.append(dzz[-1])
-            soil_types.append(soil_types[-1])
+        soil_types, dzz = define_soil_texture(expobj, args.texture)
+        # TARGET_TOP_LAYER_THICKNESS = 0.02
+        # TOLERANCE = 0.005
+        # dzz = []
+        # soil_types = []
+        # prev = 0.0
+        #
+        # for typ in expobj.soil_types:
+        #     typ.depth = round(typ.depth, 2)
+        #     if not typ.soil_type:
+        #         typ.soil_type = 'Loamy Fine Sand'
+        #     splits = typ.soil_type.split(' ')
+        #     splits = [x.capitalize() for x in splits]
+        #     typ.soil_type = ''.join(splits)
+        #     typ.soil_type = 'SandyClayLoam' if typ.soil_type == 'SadnyClayLoam' else typ.soil_type
+        #     dzz.append(round(typ.depth - prev, 2))
+        #     soil_types.append(typ.soil_type)
+        #     prev = typ.depth
+        #
+        # # Ensure the top layer has thickness equal to 2 cm only.
+        # if dzz and dzz[0] > (TARGET_TOP_LAYER_THICKNESS + TOLERANCE):
+        #     original_first_layer_thickness = dzz[0]
+        #     original_first_layer_type = soil_types[0]
+        #
+        #     remainder_thickness = original_first_layer_thickness - TARGET_TOP_LAYER_THICKNESS
+        #
+        #     dzz[0] = TARGET_TOP_LAYER_THICKNESS
+        #     dzz.insert(1, round(remainder_thickness, 2))
+        #
+        #     soil_types.insert(1, original_first_layer_type)
+        #
+        # # Make at least 12 layers of soil, extend the last layer
+        # # Make the total depth of soil profile at least crop.maxZ + 0.1
+        # while len(dzz) < 12:
+        #     dzz.append(dzz[-1])
+        #     soil_types.append(soil_types[-1])
 
         soil = SoilGeorgia(soil_type=soil_types, dz=dzz)
         step_size = 'H' if args.hourly else 'D'
@@ -112,6 +113,48 @@ def run_simulation(args):
         model_results_df = model_os.get_simulation_results()
         return model_results_df, expobj
 
+def define_soil_texture(expobj, texture = None):
+    TARGET_TOP_LAYER_THICKNESS = 0.02
+    TOLERANCE = 0.005
+    dz = []
+    soil_types = []
+    prev = 0.0
+
+    for typ in expobj.soil_types:
+        typ.depth = round(typ.depth, 2)
+        if not texture:
+            if not typ.soil_type:
+                typ.soil_type = 'Loamy Fine Sand'
+            splits = typ.soil_type.split(' ')
+            splits = [x.capitalize() for x in splits]
+            typ.soil_type = ''.join(splits)
+            typ.soil_type = 'SandyClayLoam' if typ.soil_type == 'SadnyClayLoam' else typ.soil_type
+            soil_types.append(typ.soil_type)
+        else:
+            soil_types.append(texture)
+
+        dz.append(round(typ.depth - prev, 2))
+        prev = typ.depth
+
+    # Ensure the top layer has thickness equal to 2 cm only.
+    if dz and dz[0] > (TARGET_TOP_LAYER_THICKNESS + TOLERANCE):
+        original_first_layer_thickness = dz[0]
+        original_first_layer_type = soil_types[0]
+
+        remainder_thickness = original_first_layer_thickness - TARGET_TOP_LAYER_THICKNESS
+
+        dz[0] = TARGET_TOP_LAYER_THICKNESS
+        dz.insert(1, round(remainder_thickness, 2))
+
+        soil_types.insert(1, original_first_layer_type)
+
+    # Make at least 12 layers of soil, extend the last layer
+    # Make the total depth of soil profile at least crop.maxZ + 0.1
+    while len(dz) < 12:
+        dz.append(dz[-1])
+        soil_types.append(soil_types[-1])
+
+    return soil_types, dz
 
 def run_simulation_and_get_balance(args):
     model_results_df, expobj = run_simulation(args)
@@ -131,6 +174,8 @@ def run_simulation_and_get_balance(args):
     result['sirp_id'] = expobj.sirp_id
     result['treatment_id'] = expobj.treatment_id
     result['irr_method'] = expobj.fert_method
+    result['richards_fallback'] = model_results_df["Richards Total Fallback"]
+    result['texture'] = args.texture
     for key in result.keys():
         if isinstance(result[key], float):
             result[key] = round(result[key], 2)
@@ -168,6 +213,7 @@ def main():
     parser.add_argument("--HI0", type=float, required=True, default=0.48)
     parser.add_argument("--run_count", type=int, required=True, default=1)
     parser.add_argument("--use_irrigation", type=str_to_bool, required=True, default=True)
+    parser.add_argument("--texture", type=str, required=False, default=None)
     args = parser.parse_args()
     run_simulation(args)
 
@@ -185,4 +231,5 @@ if __name__=='__main__':
     args['HI0'] = 0.27
     args['run_count'] = 1
     args['user_irrigation'] = True
+    args['texture'] = None
     run_simulation(types.SimpleNamespace(**args))

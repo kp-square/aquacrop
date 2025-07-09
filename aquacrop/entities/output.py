@@ -41,7 +41,8 @@ class Output:
                 "Deep Percolation (mm)",
                 "Runoff (mm)",
                 "Seasonal Infiltration (mm)",
-                "Balance (mm)"
+                "Balance (mm)",
+                "Richards Total Fallback"
             ]
         )
         self.water_flux = pd.DataFrame(
@@ -64,7 +65,8 @@ class Output:
                 'Tr',
                 'TrPot',
                 'RootZoneWater',
-                'balance'
+                'balance',
+                'richards_fallback'
             ]
         )
         self.instates = []
