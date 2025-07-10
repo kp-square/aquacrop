@@ -14,7 +14,7 @@ def compute_balance_process_for_textures( hourly, use_richards, use_irrigation):
     df = pd.read_csv('crop_metadata.csv')
     df_filter = df[(df['crop_type'] != 'peanut')]
     df_filter = df[(df['crop_type'] == 'corn') & (df['sirp_id'] == 314) & (df['treatment_id'] == 2)]
-    textures = ['ClayLoam', 'Loam', 'SandyLoam','LoamySand']
+    textures = ['ClayLoam']#, 'Loam', 'SandyLoam','LoamySand']
     _, row = next(df_filter.iterrows())
     wp = {'corn': 33.7, 'cotton':12.9}
     hi0 = {'corn': 0.58, 'cotton':0.33}
@@ -75,6 +75,6 @@ def main():
     compute_balance_process_for_textures(hourly, use_richards, use_irrigation)
 
 if __name__=='__main__':
-    compute_balance_process_for_textures(False, False, False)
+    compute_balance_process_for_textures(False, False, True)
     #main()
 
