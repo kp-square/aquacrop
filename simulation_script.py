@@ -174,7 +174,7 @@ def run_simulation_and_get_balance(args):
     result['sirp_id'] = expobj.sirp_id
     result['treatment_id'] = expobj.treatment_id
     result['irr_method'] = expobj.fert_method
-    result['richards_fallback'] = model_results_df["Richards Total Fallback"]
+    result['richards_fallback'] = model_results_df["Richards Total Fallback"].iloc[0]
     result['texture'] = args.texture
     for key in result.keys():
         if isinstance(result[key], float):
