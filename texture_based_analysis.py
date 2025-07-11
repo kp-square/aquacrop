@@ -75,6 +75,5 @@ def main():
     compute_balance_process_for_textures(hourly, use_richards, use_irrigation)
 
 if __name__=='__main__':
-    compute_balance_process_for_textures(False, False, True)
-    #main()
-
+    # compute_balance_process_for_textures(False, False, False)
+    main()
