@@ -113,21 +113,31 @@ def run_simulation(args):
         model_results_df = model_os.get_simulation_results()
         return model_results_df, expobj
 
-def define_soil_texture(expobj, texture = None):
+def define_soil_texture(expobj, texture=None):
     dz = []
     soil_types = []
     prev = 0.0
 
     for typ in expobj.soil_types:
         typ.depth = round(typ.depth, 2)
-        if sub(dz) < 0.2:
-            init_depth = 0.02
-        elif sub(dz) < 1.0:
-            init_depth = 0.05
-        else:
-            init_depth = 0.1
-        prev_depth = 0.0
-        while init_depth < typ.depth:
+        prev_depth = prev  # Start from where previous layer ended
+
+        while prev_depth < typ.depth:
+            # Determine compartment size based on current cumulative depth
+            if sum(dz) < 0.2:  # First 20 cm: 2 cm compartments
+                compartment_size = 0.02
+            elif sum(dz) < 1.0:  # Next 80 cm (up to 1 m): 5 cm compartments
+                compartment_size = 0.05
+            else:  # Rest: 10 cm compartments
+                compartment_size = 0.10
+
+            # Calculate next depth
+            next_depth = prev_depth + compartment_size
+
+            # Handle the last compartment if remaining depth is small
+            if typ.depth - prev_depth < 1.5 * compartment_size:
+                next_depth = typ.depth
+
             if not texture:
                 if not typ.soil_type:
                     typ.soil_type = 'Loamy Fine Sand'
@@ -138,21 +148,15 @@ def define_soil_texture(expobj, texture = None):
                 soil_types.append(typ.soil_type)
             else:
                 soil_types.append(texture)
-    
-            dz.append(round(init_depth - prev_depth, 2))
-            prev_depth = init_depth
-            if typ.depth - init_depth < 2*init_depth:
-                init_depth = typ.depth
-            else:
-                init_depth += 0.02
-            
+
+            dz.append(round(next_depth - prev_depth, 2))
+            prev_depth = next_depth
+
         prev = typ.depth
 
-   
     # Make at least 40 layers of soil, extend the last layer
-    # Make the total depth of soil profile at least crop.maxZ + 0.1
     while len(dz) < 40:
-        dz.append(dz[-1])
+        dz.append(0.10)
         soil_types.append(soil_types[-1])
 
     return soil_types, dz
