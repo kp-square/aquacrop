@@ -113,48 +113,55 @@ def run_simulation(args):
         model_results_df = model_os.get_simulation_results()
         return model_results_df, expobj
 
-def define_soil_texture(expobj, texture = None):
-    TARGET_TOP_LAYER_THICKNESS = 0.02
-    TOLERANCE = 0.005
+
+def define_soil_texture(expobj, texture=None):
     dz = []
     soil_types = []
     prev = 0.0
 
     for typ in expobj.soil_types:
         typ.depth = round(typ.depth, 2)
-        if not texture:
-            if not typ.soil_type:
-                typ.soil_type = 'Loamy Fine Sand'
-            splits = typ.soil_type.split(' ')
-            splits = [x.capitalize() for x in splits]
-            typ.soil_type = ''.join(splits)
-            typ.soil_type = 'SandyClayLoam' if typ.soil_type == 'SadnyClayLoam' else typ.soil_type
-            soil_types.append(typ.soil_type)
-        else:
-            soil_types.append(texture)
+        prev_depth = prev  # Start from where previous layer ended
 
-        dz.append(round(typ.depth - prev, 2))
+        while prev_depth < typ.depth:
+            # Determine compartment size based on current cumulative depth
+            if sum(dz) < 0.2:  # First 20 cm: 2 cm compartments
+                compartment_size = 0.02
+            elif sum(dz) < 1.0:  # Next 80 cm (up to 1 m): 5 cm compartments
+                compartment_size = 0.05
+            else:  # Rest: 10 cm compartments
+                compartment_size = 0.10
+
+            # Calculate next depth
+            next_depth = prev_depth + compartment_size
+
+            # Handle the last compartment if remaining depth is small
+            if typ.depth - prev_depth < 1.5 * compartment_size:
+                next_depth = typ.depth
+
+            if not texture:
+                if not typ.soil_type:
+                    typ.soil_type = 'Loamy Fine Sand'
+                splits = typ.soil_type.split(' ')
+                splits = [x.capitalize() for x in splits]
+                typ.soil_type = ''.join(splits)
+                typ.soil_type = 'SandyClayLoam' if typ.soil_type == 'SadnyClayLoam' else typ.soil_type
+                soil_types.append(typ.soil_type)
+            else:
+                soil_types.append(texture)
+
+            dz.append(round(next_depth - prev_depth, 2))
+            prev_depth = next_depth
+
         prev = typ.depth
 
-    # Ensure the top layer has thickness equal to 2 cm only.
-    if dz and dz[0] > (TARGET_TOP_LAYER_THICKNESS + TOLERANCE):
-        original_first_layer_thickness = dz[0]
-        original_first_layer_type = soil_types[0]
-
-        remainder_thickness = original_first_layer_thickness - TARGET_TOP_LAYER_THICKNESS
-
-        dz[0] = TARGET_TOP_LAYER_THICKNESS
-        dz.insert(1, round(remainder_thickness, 2))
-
-        soil_types.insert(1, original_first_layer_type)
-
-    # Make at least 12 layers of soil, extend the last layer
-    # Make the total depth of soil profile at least crop.maxZ + 0.1
-    while len(dz) < 12:
-        dz.append(dz[-1])
+    # Make at least 40 layers of soil, extend the last layer
+    while len(dz) < 40:
+        dz.append(0.10)
         soil_types.append(soil_types[-1])
 
     return soil_types, dz
+
 
 def run_simulation_and_get_balance(args):
     model_results_df, expobj = run_simulation(args)
