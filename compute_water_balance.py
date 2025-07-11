@@ -79,6 +79,6 @@ def main():
     compute_balance_process(hourly, use_richards, use_irrigation, texture)
 
 if __name__=='__main__':
-    compute_balance_process(False, False, False)
-    # main()
+    #compute_balance_process(False, False, False)
+    main()
 

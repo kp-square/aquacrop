@@ -164,6 +164,7 @@ def define_soil_texture(expobj, texture=None):
 
 
 def run_simulation_and_get_balance(args):
+    t1 = time.time()
     model_results_df, expobj = run_simulation(args)
     result  = {}
     result['irr'] = model_results_df["Seasonal irrigation (mm)"].iloc[0]
@@ -183,6 +184,7 @@ def run_simulation_and_get_balance(args):
     result['irr_method'] = expobj.fert_method
     result['richards_fallback'] = model_results_df["Richards Total Fallback"].iloc[0]
     result['texture'] = args.texture
+    result['simulation_time'] = time.time() - t1
     for key in result.keys():
         if isinstance(result[key], float):
             result[key] = round(result[key], 2)

@@ -14,4 +14,4 @@ module load anaconda3/2023.09-0
 
 
 # Run V2.py with the parameters
-srun --cpu-bind=cores /home/kpanthi/.conda/envs/drl/bin/python compute_water_balance.py --use_richards True --hourly False --use_irrigation False
+srun --cpu-bind=cores /home/kpanthi/.conda/envs/drl/bin/python compute_water_balance.py --use_richards True --hourly False --use_irrigation True
