@@ -221,15 +221,15 @@ def main():
 if __name__=='__main__':
     x = 123
     args = {}
-    args['crop_type'] = 'corn'
-    args['year'] = 2018
-    args['treatment_id'] = 8
-    args['sirp_id'] = 132
+    args['crop_type'] = 'cotton'
+    args['year'] = 2020
+    args['treatment_id'] = 6
+    args['sirp_id'] = 222
     args['hourly'] = True
     args['use_richards'] = True
     args['WP'] = 12
     args['HI0'] = 0.27
     args['run_count'] = 1
-    args['user_irrigation'] = True
+    args['use_irrigation'] = True
     args['texture'] = None
     run_simulation(types.SimpleNamespace(**args))

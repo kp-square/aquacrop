@@ -39,6 +39,7 @@ from ..optim.dataobjects import InputState, OutputState
 
 from typing import Tuple, TYPE_CHECKING
 import time
+from datetime import timedelta
 
 if TYPE_CHECKING:
     # Important: classes are only imported when types are checked, not in production.
@@ -403,9 +404,15 @@ def solution_single_time_step_richards(
         # NewCond.th has the volumetric water content for each compartment
         Irr_so_far += irr_hr
         Precip_so_far += precipitation_hr
-        converged, new_th, DeepPerc, Runoff, Infl, FluxOut = solver.solve(hour, NewCond,
+        converged, new_th, DeepPerc, Runoff, Infl, FluxOut, mat_pot = solver.solve(hour, NewCond,
                                                                                     irr_hr,
                                                                                     precipitation_hr)
+        sensor_vals = mat_pot[1:4]
+        datetime_val = clock_struct.planting_dates[0] + timedelta(hours=hour)
+        with open('sensordata.csv', 'a') as f:
+            f.write(f"{datetime_val},{-sensor_vals[0]},{-sensor_vals[1]},{-sensor_vals[2]}\n")
+
+
         #if converged:
         NewCond.th = new_th
         DeepPerc_daily += DeepPerc*1000

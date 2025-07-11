@@ -391,7 +391,7 @@ class RichardEquationSolver:
                 for _step in range(solver.Nt):
                     new_cond_sub.th = sub_step_theta_prev + diff_water_sub
 
-                    converged, theta_current, _deep_perc, _runoff, _infl, K_current = solver.solve(
+                    converged, theta_current, _deep_perc, _runoff, _infl, K_current, h_current = solver.solve(
                         step * self.Nt + _step, new_cond_sub, irrigation / solver.Nt, rainfall / solver.Nt)
 
                     sub_step_theta_prev = theta_current.copy()
@@ -402,7 +402,7 @@ class RichardEquationSolver:
                 self.total_fallback_mins += solver.total_fallback_mins
         elif not converged:
             dry_soil = False
-            theta_current, deep_percolation, runoff, infl, K_current = self.handle_non_convergence_bottom_up(R, theta_prev_prev, root_water_uptake)
+            theta_current, deep_percolation, runoff, infl, K_current, h_current = self.handle_non_convergence_bottom_up(R, theta_prev_prev, root_water_uptake)
 
         self.Infiltration_So_Far += infl
         # calculate deep percolation
@@ -426,7 +426,7 @@ class RichardEquationSolver:
 
         self.prev_cond.th = theta_current
         new_theta = theta_current.flatten()
-        return converged, new_theta, deep_percolation, runoff, infl, K_current
+        return converged, new_theta, deep_percolation, runoff, infl, K_current, h_current
 
 
     def handle_non_convergence_top_down(self, R, theta_prev, root_uptake_rate):
@@ -548,7 +548,7 @@ class RichardEquationSolver:
             h_current = psi_fun(clamped_theta, pars_sec)
 
             K_temp = K(h_current, pars_sec)
-            K_half = wieghted_geometric_mean(K_temp[:-1], K_temp[1:], self.dz.values)
+            K_half = mean(K_temp[:-1], K_temp[1:], self.dz.values)
 
             theta_new += root_uptake
 
@@ -634,7 +634,7 @@ class RichardEquationSolver:
             total_deep_perc += deep_percolation
             total_infl += actual_infl
 
-        return theta_new, total_deep_perc, total_runoff, total_infl, k_new
+        return theta_new, total_deep_perc, total_runoff, total_infl, k_new, h_new
 
     def solve_daily(self, new_cond, irrigation, rainfall):
         R = (rainfall + irrigation) / 1000.0
@@ -767,4 +767,4 @@ class RichardEquationSolver:
         self.prev_cond.th = theta_current
 
         new_theta = theta_current.flatten()
-        return converged, new_theta, deep_percolation, runoff, infl, K_current
+        return converged, new_theta, deep_percolation, runoff, infl, K_current, h_current
