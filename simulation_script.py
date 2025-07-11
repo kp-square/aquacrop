@@ -114,43 +114,44 @@ def run_simulation(args):
         return model_results_df, expobj
 
 def define_soil_texture(expobj, texture = None):
-    TARGET_TOP_LAYER_THICKNESS = 0.02
-    TOLERANCE = 0.005
     dz = []
     soil_types = []
     prev = 0.0
 
     for typ in expobj.soil_types:
         typ.depth = round(typ.depth, 2)
-        if not texture:
-            if not typ.soil_type:
-                typ.soil_type = 'Loamy Fine Sand'
-            splits = typ.soil_type.split(' ')
-            splits = [x.capitalize() for x in splits]
-            typ.soil_type = ''.join(splits)
-            typ.soil_type = 'SandyClayLoam' if typ.soil_type == 'SadnyClayLoam' else typ.soil_type
-            soil_types.append(typ.soil_type)
+        if sub(dz) < 0.2:
+            init_depth = 0.02
+        elif sub(dz) < 1.0:
+            init_depth = 0.05
         else:
-            soil_types.append(texture)
-
-        dz.append(round(typ.depth - prev, 2))
+            init_depth = 0.1
+        prev_depth = 0.0
+        while init_depth < typ.depth:
+            if not texture:
+                if not typ.soil_type:
+                    typ.soil_type = 'Loamy Fine Sand'
+                splits = typ.soil_type.split(' ')
+                splits = [x.capitalize() for x in splits]
+                typ.soil_type = ''.join(splits)
+                typ.soil_type = 'SandyClayLoam' if typ.soil_type == 'SadnyClayLoam' else typ.soil_type
+                soil_types.append(typ.soil_type)
+            else:
+                soil_types.append(texture)
+    
+            dz.append(round(init_depth - prev_depth, 2))
+            prev_depth = init_depth
+            if typ.depth - init_depth < 2*init_depth:
+                init_depth = typ.depth
+            else:
+                init_depth += 0.02
+            
         prev = typ.depth
 
-    # Ensure the top layer has thickness equal to 2 cm only.
-    if dz and dz[0] > (TARGET_TOP_LAYER_THICKNESS + TOLERANCE):
-        original_first_layer_thickness = dz[0]
-        original_first_layer_type = soil_types[0]
-
-        remainder_thickness = original_first_layer_thickness - TARGET_TOP_LAYER_THICKNESS
-
-        dz[0] = TARGET_TOP_LAYER_THICKNESS
-        dz.insert(1, round(remainder_thickness, 2))
-
-        soil_types.insert(1, original_first_layer_type)
-
-    # Make at least 12 layers of soil, extend the last layer
+   
+    # Make at least 40 layers of soil, extend the last layer
     # Make the total depth of soil profile at least crop.maxZ + 0.1
-    while len(dz) < 12:
+    while len(dz) < 40:
         dz.append(dz[-1])
         soil_types.append(soil_types[-1])
 
