@@ -143,9 +143,9 @@ def define_soil_texture(expobj, texture=None):
                     typ.soil_type = 'Loamy Fine Sand'
                 splits = typ.soil_type.split(' ')
                 splits = [x.capitalize() for x in splits]
-                typ.soil_type = ''.join(splits)
-                typ.soil_type = 'SandyClayLoam' if typ.soil_type == 'SadnyClayLoam' else typ.soil_type
-                soil_types.append(typ.soil_type)
+                soil_type = ''.join(splits)
+                soil_type = 'SandyClayLoam' if soil_type == 'SadnyClayLoam' else soil_type
+                soil_types.append(soil_type)
             else:
                 soil_types.append(texture)
 
@@ -155,8 +155,8 @@ def define_soil_texture(expobj, texture=None):
         prev = typ.depth
 
     # Make at least 40 layers of soil, extend the last layer
-    while len(dz) < 40:
-        dz.append(0.10)
+    while sum(dz) < 3.0:
+        dz.append(0.20)
         soil_types.append(soil_types[-1])
 
     return soil_types, dz

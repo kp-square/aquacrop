@@ -548,7 +548,7 @@ class RichardEquationSolver:
             h_current = psi_fun(clamped_theta, pars_sec)
 
             K_temp = K(h_current, pars_sec)
-            K_half = mean(K_temp[:-1], K_temp[1:], self.dz.values)
+            K_half = wieghted_geometric_mean(K_temp[:-1], K_temp[1:], self.dz.values)
 
             theta_new += root_uptake
 
