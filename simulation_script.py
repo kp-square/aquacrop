@@ -144,9 +144,9 @@ def define_soil_texture(expobj, texture=None):
                     typ.soil_type = 'Loamy Fine Sand'
                 splits = typ.soil_type.split(' ')
                 splits = [x.capitalize() for x in splits]
-                typ.soil_type = ''.join(splits)
-                typ.soil_type = 'SandyClayLoam' if typ.soil_type == 'SadnyClayLoam' else typ.soil_type
-                soil_types.append(typ.soil_type)
+                soil_type = ''.join(splits)
+                soil_type = 'SandyClayLoam' if soil_type == 'SadnyClayLoam' else soil_type
+                soil_types.append(soil_type)
             else:
                 soil_types.append(texture)
 
