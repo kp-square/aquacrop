@@ -113,7 +113,6 @@ def run_simulation(args):
         model_results_df = model_os.get_simulation_results()
         return model_results_df, expobj
 
-
 def define_soil_texture(expobj, texture=None):
     dz = []
     soil_types = []
@@ -156,12 +155,11 @@ def define_soil_texture(expobj, texture=None):
         prev = typ.depth
 
     # Make at least 40 layers of soil, extend the last layer
-    while len(dz) < 40:
-        dz.append(0.10)
+    while sum(dz) < 3.0:
+        dz.append(0.20)
         soil_types.append(soil_types[-1])
 
     return soil_types, dz
-
 
 def run_simulation_and_get_balance(args):
     t1 = time.time()

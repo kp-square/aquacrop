@@ -169,7 +169,7 @@ class SoilGeorgia:
                 self.cn = 46
                 self.calc_cn = 0
                 self.rew = 5
-            self.add_layer(sum(dz), 0.057, 0.081, 0.41, 3447, 100, 0.0569, 12.5, 2.27, 0.5)
+            self.add_layer(sum(dz), 0.057, 0.081, 0.41, 1602, 100, 0.0569, 12.5, 2.27, 0.5)
 
         elif soil_type == "FineSand":
             if first_layer:
@@ -204,7 +204,7 @@ class SoilGeorgia:
                 self.cn = 46
                 self.calc_cn = 0
                 self.rew = 7
-            self.add_layer(sum(dz), 0.066, 0.116, 0.41, 1010, 100, 0.064, 7.5, 1.89, 0.5)
+            self.add_layer(sum(dz), 0.066, 0.116, 0.41, 988, 100, 0.064, 7.5, 1.89, 0.5)
 
         elif soil_type == "LoamyFineSand":
             if first_layer:
