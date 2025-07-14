@@ -247,8 +247,9 @@ class RichardEquationSolver:
         self.SATURATION_THRESHOLD_h = -0.001
         self.h_eff_sat = np.full(self.Nz, self.SATURATION_THRESHOLD_h)
         self.theta_eff_sat = thetaf(self.h_eff_sat, self.pars)
-        self.theta_eff_residual = thetaf(np.ones(self.Nz) * -30.0, self.pars)
+        self.theta_eff_residual = thetaf(np.ones(self.Nz) * -300.0, self.pars)
         self.total_fallback_mins = 0
+        self.T_surface_K = 273 + (prev_cond.temp_min + prev_cond.temp_max) / 2.0
 
     def solve(self, step, new_cond, irrigation, rainfall):
         R = (rainfall + irrigation)/1000.0
@@ -289,7 +290,7 @@ class RichardEquationSolver:
         max_diff = 0.0
         for iter_count in range(self.max_iter):
 
-            K_half = wieghted_geometric_mean(K_current[:-1], K_current[1:], self.dz.values)
+            K_half = mean(K_current[:-1], K_current[1:], self.dz.values)
 
 
             A, b = assemble_system(K_half, C_current, theta_prev, theta_current, h_current, self.dz, self.dt,
@@ -309,7 +310,6 @@ class RichardEquationSolver:
 
             if max_diff < self.tolerance:
                 converged = True
-                break
 
             max_diff_differential = (max_diff - prev_max_diff)
             if max_diff_differential > 0:
@@ -358,6 +358,10 @@ class RichardEquationSolver:
                 break
 
             theta_current = thetaf(h_current, self.pars)
+            if converged and h_current[0] < -10.0:
+                theta_current = self._calculate_vapor_flux_upward(theta_current, h_current)
+                h_current = psi_fun(theta_current, self.pars)
+
             K_current = K(h_current, self.pars)
             C_current = C(h_current, self.pars)
 
@@ -522,6 +526,101 @@ class RichardEquationSolver:
 
         return theta_new, deep_percolation, runoff, actual_infl, k_new
 
+    def _calculate_vapor_flux_upward(self, theta_new, h_current):
+        """
+        Calculates moisture change from upward vapor diffusion in the top 15 cm.
+
+        This method implements the detailed step-by-step calculation for vapor
+        flux between adjacent soil layers based on Fick's Law of diffusion.
+        It is triggered when surface layers are dry.
+        """
+        if self.time_step == 'm':
+            dt = 60
+        elif self.time_step == 'sm':
+            dt = 5 * 60
+        elif self.time_step == 'h':
+            dt = 24 * 60 * 60
+        else:
+            dt = 1.0
+        # --- Physical Constants (SI Units) ---
+        g = 9.81  # Acceleration due to gravity [m s⁻²]
+        Mw = 0.018015  # Molar mass of water [kg mol⁻¹]
+        R = 8.314  # Universal gas constant [J mol⁻¹ K⁻¹]
+        Rv = R / Mw  # Specific gas constant for water vapor [J kg⁻¹ K⁻¹]
+        RHO_WATER = 1000  # Density of liquid water [kg m⁻³]
+
+        # --- Identify Target Layers (Top 15 cm) ---
+        evap_zone_indices = np.where(self.z_nodes <= 0.15)[0]
+        if len(evap_zone_indices) < 2:
+            return theta_new  # Need at least two layers to calculate flux
+
+        Nz_evap = len(evap_zone_indices)
+
+        # --- Step 1: Characterize the Soil Layers ---
+        theta_s_val = self.pars['thetaS']
+        if not np.isscalar(theta_s_val):
+            theta_s_val = theta_s_val[evap_zone_indices]
+        theta_in_zone = theta_new[evap_zone_indices]
+
+        # 1b. Calculate Air-Filled Porosity (beta)
+        beta = np.maximum(0.0, theta_s_val - theta_in_zone)
+
+        # --- Step 2: Determine the Vapor Density (rho_v) in Each Layer ---
+        # 2a. Calculate Saturated Vapor Pressure (P_s) using Magnus-Tetens
+        T_celsius = self.T_surface_K - 273.15
+        P_s = 610.94 * np.exp((17.625 * T_celsius) / (T_celsius + 243.04))
+
+        # 2b. Calculate Relative Humidity (hr) using the Kelvin equation
+        h_in_zone = h_current[evap_zone_indices]
+        hr = np.exp((h_in_zone * g * Mw) / (R * self.T_surface_K))
+
+        # 2c. Calculate Vapor Density (rho_v) using the ideal gas law
+        rho_v = (P_s * hr) / (Rv * self.T_surface_K)
+
+        # --- Step 3: Determine the Effective Soil Vapor Diffusivity (D_soil) ---
+        # 3a. Calculate Vapor Diffusivity in Air (D_vap)
+        D_vap = (2.29e-5) * (self.T_surface_K / 273.15) ** 1.75
+
+        # 3b. Calculate Effective Diffusivity in Soil (D_soil)
+        D_soil = D_vap * (beta ** (2 / 3))
+
+        # --- Step 4 & 5: Calculate Flux and Update Water Content ---
+        # Iterate through interfaces from the bottom of the evap zone upwards
+        for i in range(Nz_evap - 1, 0, -1):
+            # i = lower layer index, i-1 = upper layer index (within evap_zone)
+            abs_idx_i = evap_zone_indices[i]
+            abs_idx_i_minus_1 = evap_zone_indices[i - 1]
+
+            # 3c. Calculate Average Diffusivity Between Layers
+            D_soil_avg = (D_soil[i] + D_soil[i - 1]) / 2.0
+
+            # Calculate distance between layer centers
+            dz_interface = self.z_nodes[abs_idx_i] - self.z_nodes[abs_idx_i_minus_1]
+
+            # Calculate Upward Vapor Flux (q_v) using Fick's Law
+            rho_gradient = (rho_v[i - 1] - rho_v[i]) / dz_interface
+            q_v = -D_soil_avg * rho_gradient  # [kg m⁻² s⁻¹]
+
+            if q_v <= 0: continue  # Only consider upward flux
+
+            # Convert flux rate to a total volume of water for the timestep
+            flux_mass = q_v * dt
+            flux_volume = flux_mass / RHO_WATER  # [m] or [m³ m⁻²]
+
+            # Limit flux by available water in the lower layer
+            available_water = max(0, (theta_new[abs_idx_i] - self.theta_eff_residual[abs_idx_i])) * self.dz[abs_idx_i]
+            flux_volume = min(flux_volume, available_water)
+
+            # Limit flux by available space in the upper layer
+            available_space = max(0, (self.theta_eff_sat[abs_idx_i_minus_1] - theta_new[abs_idx_i_minus_1])) * self.dz[
+                abs_idx_i_minus_1]
+            flux_volume = min(flux_volume, available_space)
+
+            # Update water content in the two layers
+            theta_new[abs_idx_i] -= flux_volume / self.dz[abs_idx_i]
+            theta_new[abs_idx_i_minus_1] += flux_volume / self.dz[abs_idx_i_minus_1]
+
+        return theta_new
 
     def handle_non_convergence_bottom_up(self, R, theta_prev, root_uptake_rate):
         """
@@ -548,7 +647,7 @@ class RichardEquationSolver:
             h_current = psi_fun(clamped_theta, pars_sec)
 
             K_temp = K(h_current, pars_sec)
-            K_half = wieghted_geometric_mean(K_temp[:-1], K_temp[1:], self.dz.values)
+            K_half = mean(K_temp[:-1], K_temp[1:], self.dz.values)
 
             theta_new += root_uptake
 
@@ -616,6 +715,9 @@ class RichardEquationSolver:
             # 2. Handle Surface Infiltration (Top Boundary Condition)
             infl, runoff = calculate_top_flux_infiltration(r, h_current, self.pars, self.dz, self.Infiltration_So_Far,
                                                            theta_prev, self.theta_eff_sat)
+
+            if infl == 0.0 and h_current[0] < -10.0:
+                theta_new = self._calculate_vapor_flux_upward(theta_new, h_current)
 
             available_storage_vol = max(0, (self.theta_eff_sat[0] - theta_new[0]) * self.dz[0])
             actual_infl = min(infl, available_storage_vol)
