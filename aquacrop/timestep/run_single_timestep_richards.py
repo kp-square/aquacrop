@@ -407,9 +407,9 @@ def solution_single_time_step_richards(
         converged, new_th, DeepPerc, Runoff, Infl, FluxOut, mat_pot = solver.solve(hour, NewCond,
                                                                                     irr_hr,
                                                                                     precipitation_hr)
-        datetime_val = clock_struct.planting_dates[0] + timedelta(hours=hour)
-        with open('sensordata.csv', 'a') as f:
-            f.write(f"{datetime_val},{-mat_pot[7]},{-mat_pot[13]},{-mat_pot[16]}\n")
+        # datetime_val = clock_struct.planting_dates[0] + timedelta(hours=hour)
+        # with open('sensordata.csv', 'a') as f:
+        #     f.write(f"{datetime_val},{-mat_pot[7]},{-mat_pot[13]},{-mat_pot[16]}\n")
 
 
         #if converged:
