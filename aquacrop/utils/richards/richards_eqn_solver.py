@@ -647,7 +647,7 @@ class RichardEquationSolver:
             h_current = psi_fun(clamped_theta, pars_sec)
 
             K_temp = K(h_current, pars_sec)
-            K_half = mean(K_temp[:-1], K_temp[1:], self.dz.values)
+            K_half = wieghted_geometric_mean(K_temp[:-1], K_temp[1:], self.dz.values)
 
             theta_new += root_uptake
 
@@ -776,7 +776,7 @@ class RichardEquationSolver:
         max_diff = 0.0
         for iter_count in range(self.max_iter):
 
-            K_half = wieghted_geometric_mean(K_current[:-1], K_current[1:], self.dz.values)
+            K_half = mean(K_current[:-1], K_current[1:], self.dz.values)
 
             A, b = assemble_system(K_half, C_current, theta_prev, theta_current, h_current, self.dz, self.dt,
                                    K_current[-1], root_water_uptake, self.z_nodes_center, self.has_water_table,

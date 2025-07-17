@@ -86,10 +86,7 @@ def run_simulation(args):
         # while len(dzz) < 12:
         #     dzz.append(dzz[-1])
         #     soil_types.append(soil_types[-1])
-        if args.use_richards:
-            soil = SoilGeorgia(soil_type=soil_types, dz=dzz, evap_z_surf=0.04, evap_z_min=0.04, evap_z_max=0.04)
-        else:
-            soil = SoilGeorgia(soil_type=soil_types, dz=dzz)
+        soil = SoilGeorgia(soil_type=soil_types, dz=dzz, evap_z_surf=0.06, evap_z_min=0.06, evap_z_max=0.10)
         step_size = 'H' if args.hourly else 'D'
         # source: https://open.clemson.edu/cgi/viewcontent.cgi?article=2297&context=all_theses
         cotton_params = {'CGC_CD':0.10, 'CDC_CD':0.029, 'CCx':0.98, 'Kcb':1.1, 'Zx':1.2, 'WP':args.WP, 'HI0':args.HI0, 'EmergenceCD':3, 'SenescenceCD': 100, 'MaturityCD': 160, 'FloweringCD':42, 'Tbase':15.6, "HIstartCD":64, 'YldFormCD':95, 'SwitchGDD':1}
