@@ -52,6 +52,7 @@ def soil_evaporation_hourly(
     et0: float,
     Infl: float,
     Rain: float,
+    Rain_so_far: float,
     Irr: float,
     growing_season: bool,
 ) -> Tuple[float, "ndarray", bool, float, float, float, float, float, float]:
@@ -279,7 +280,7 @@ def soil_evaporation_hourly(
     if (Irr > 0) and (IrrMngt_IrrMethod != 4):
         # Only apply adjustment if irrigation occurs and not in net irrigation
         # mode
-        if (Rain > 1) or (NewCond_SurfaceStorage > 0):
+        if (Rain_so_far > 1) or (NewCond_SurfaceStorage > 0):
             # No adjustment for partial wetting - assume surface is fully wet
             EsPotIrr = EsPot
         else:
@@ -412,7 +413,7 @@ def soil_evaporation_hourly(
             )
             while (Wrel < Wcheck) and (NewCond_EvapZ < Soil_EvapZmax):
                 # Expand evaporation layer by 1 mm
-                NewCond_EvapZ = NewCond_EvapZ + 0.001
+                NewCond_EvapZ = NewCond_EvapZ + 0.001/24.0 #adjusted for hourly run, expanding evaporation layer by 1 mm per day
                 # Update water storage (mm) in evaporation layer
                 Wevap_Sat, Wevap_Fc, Wevap_Wp, Wevap_Dry, Wevap_Act = evap_layer_water_content(
                     NewCond_th,

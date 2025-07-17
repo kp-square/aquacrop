@@ -395,6 +395,7 @@ def solution_single_time_step_richards(
             et0_hr,
             Infl,
             precipitation_hr,
+            Precip_so_far + precipitation_hr,
             irr_hr,
             growing_season,
         )
@@ -410,7 +411,6 @@ def solution_single_time_step_richards(
         datetime_val = clock_struct.planting_dates[0] + timedelta(hours=hour)
         with open('sensordata.csv', 'a') as f:
             f.write(f"{datetime_val},{-mat_pot[7]},{-mat_pot[13]},{-mat_pot[16]}\n")
-
 
         #if converged:
         NewCond.th = new_th

@@ -300,7 +300,8 @@ def transpiration_hourly_setup(
             thTAW = prof.th_fc[comp] - prof.th_wp[comp]
             if Crop.ETadj == 1:
                 # Adjust stomatal stress threshold for et0 on current day
-                p_up_sto = Crop.p_up[1] + (0.04 * (5 - et0)) * (np.log10(10 - 9 * Crop.p_up[1]))
+                hourly_ref_et0 = 5 / 24
+                p_up_sto = Crop.p_up[1] + (0.04 * (hourly_ref_et0 - et0)) * (np.log10(10 - 9 * Crop.p_up[1]))
 
             # Determine critical water content at which stomatal closure will
             # occur in compartment
@@ -332,7 +333,7 @@ def transpiration_hourly_setup(
                 # No transpiration is possible from compartment as water
                 # content does not exceed wilting point
                 KsComp = 0
-            HOURS_PER_DAY = 24
+
             # Adjust compartment stress factor for aeration stress
             if NewCond.day_submerged >= Crop.LagAer:
                 # Full aeration stress - no transpiration possible from
@@ -340,9 +341,9 @@ def transpiration_hourly_setup(
                 AerComp = 0
             elif NewCond.th[comp] > (prof.th_s[comp] - (Crop.Aer / 100)):
                 # Increment aeration stress days counter
-                NewCond.aer_days_comp[comp] = NewCond.aer_days_comp[comp] + 1
-                if NewCond.aer_days_comp[comp] >= Crop.LagAer * HOURS_PER_DAY:
-                    NewCond.aer_days_comp[comp] = Crop.LagAer * HOURS_PER_DAY
+                NewCond.aer_days_comp[comp] = NewCond.aer_days_comp[comp] + 1/24.0 # scaled for hourly
+                if NewCond.aer_days_comp[comp] >= Crop.LagAer:
+                    NewCond.aer_days_comp[comp] = Crop.LagAer
                     fAer = 0
                 else:
                     fAer = 1
@@ -354,8 +355,8 @@ def transpiration_hourly_setup(
                 if AerComp < 0:
                     AerComp = 0
 
-                AerComp = (fAer + (NewCond.aer_days_comp[comp]/HOURS_PER_DAY - 1) * AerComp) / (
-                        fAer + NewCond.aer_days_comp[comp]/HOURS_PER_DAY - 1
+                AerComp = (fAer + (NewCond.aer_days_comp[comp] - 1) * AerComp) / (
+                        fAer + NewCond.aer_days_comp[comp] - 1
                 )
             else:
                 # No aeration stress as number of submerged days does not
