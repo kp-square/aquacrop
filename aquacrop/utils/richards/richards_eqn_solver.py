@@ -358,9 +358,6 @@ class RichardEquationSolver:
                 break
 
             theta_current = thetaf(h_current, self.pars)
-            if converged and h_current[0] < -10.0:
-                theta_current = self._calculate_vapor_flux_upward(theta_current, h_current)
-                h_current = psi_fun(theta_current, self.pars)
 
             K_current = K(h_current, self.pars)
             C_current = C(h_current, self.pars)
@@ -526,7 +523,7 @@ class RichardEquationSolver:
 
         return theta_new, deep_percolation, runoff, actual_infl, k_new
 
-    def _calculate_vapor_flux_upward(self, theta_new, h_current):
+    def calculate_vapor_flux_upward(self, theta_new, h_current):
         """
         Calculates moisture change from upward vapor diffusion in the top 15 cm.
 
@@ -715,9 +712,6 @@ class RichardEquationSolver:
             # 2. Handle Surface Infiltration (Top Boundary Condition)
             infl, runoff = calculate_top_flux_infiltration(r, h_current, self.pars, self.dz, self.Infiltration_So_Far,
                                                            theta_prev, self.theta_eff_sat)
-
-            if infl == 0.0 and h_current[0] < -10.0:
-                theta_new = self._calculate_vapor_flux_upward(theta_new, h_current)
 
             available_storage_vol = max(0, (self.theta_eff_sat[0] - theta_new[0]) * self.dz[0])
             actual_infl = min(infl, available_storage_vol)
