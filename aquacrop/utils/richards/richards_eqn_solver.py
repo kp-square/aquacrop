@@ -88,6 +88,51 @@ def calculate_top_flux_infiltration(R, h_current, pars, dz, Ft, theta_val, theta
     return infl, runoff
 
 
+def topboundary_rainfall_evaporation(h_current, K_half, K_sat,
+                                rainfall, evaporation, dz, hA, hS):
+    # Calculate atmospheric equilibrium head
+    h_surface = h_current[0]
+    h_below = h_current[1]
+    K_surface = K_half[0]
+    # Net atmospheric demand
+    net_demand = rainfall - evaporation
+    boundry_type = 'flux'
+
+    # Calculate soil hydraulic capacity
+    dh_dx = (h_below - h_surface) / dz
+    if net_demand > 0:  # infiltration
+        q_soil_capacity = K_sat * ((hS - h_surface)/dz + 1)
+    else:  # evaporation
+        q_soil_capacity = K_surface * (dh_dx + 1)  # upward
+
+
+    # Apply boundary condition logic
+    if net_demand > 0:  # Rainfall dominant
+        if h_surface <= hS:  # no ponding constraint violation
+            q_actual = min(net_demand, q_soil_capacity)
+            runoff = max(0.0, net_demand - q_soil_capacity)
+        else:  # ponding would occur
+            h_surface = hS
+            q_actual = min(net_demand, q_soil_capacity)
+            runoff = max(0.0, net_demand - q_soil_capacity)
+            boundry_type='head'
+
+    else:  # Evaporation dominant
+        net_evap_demand = abs(net_demand)
+        if h_surface >= hA:  # can sustain evaporation
+            q_actual = -min(net_evap_demand, abs(q_soil_capacity))
+        else:  # limited by atmospheric equilibrium
+            h_surface = hA
+            gradient_at_limit = (hA - h_below) / dz + 1.0
+            q_flux_at_limit = K_surface * gradient_at_limit
+            q_flux_at_limit = min(0.0, q_flux_at_limit)
+            q_actual = -q_flux_at_limit
+            boundry_type='head'
+        runoff = 0
+
+    return boundry_type, q_actual, runoff, h_surface
+
+
 def compute_deep_percolation(K_current, dt):
     """
     Compute deep percolation flux [m/hr] and volume [m] for a time step.
@@ -250,9 +295,16 @@ class RichardEquationSolver:
         self.theta_eff_residual = thetaf(np.ones(self.Nz) * -300.0, self.pars)
         self.total_fallback_mins = 0
         self.T_surface_K = 273 + (prev_cond.temp_min + prev_cond.temp_max) / 2.0
+        self.h_max = -0.01
 
-    def solve(self, step, new_cond, irrigation, rainfall):
+    def solve(self, step, new_cond, irrigation, rainfall, EsPot, rh = None):
         R = (rainfall + irrigation)/1000.0
+        Es = EsPot/1000.0
+        if rh:
+            # h_A = (RT/Mg)*ln(Hr): R,M and g are constants.
+            h_A = 8.314 * self.T_surface_K / (0.018015*9.81) * math.log(rh/100)
+        else:
+            h_A = -500
         self.tolerance = 1e-5
 
         theta_prev = np.array(self.prev_cond.th)
@@ -263,9 +315,6 @@ class RichardEquationSolver:
             root_water_uptake = (new_cond.th - theta_prev_prev)/self.dt
         else:
             root_water_uptake = np.zeros(self.Nz)
-
-        infl, runoff = calculate_top_flux_infiltration(R, h_current, self.pars, self.dz,
-                                                       self.Infiltration_So_Far, theta_prev, self.theta_eff_sat)
 
         dry_soil = False
         no_deep_perc = False
@@ -280,6 +329,8 @@ class RichardEquationSolver:
         C_current = C(h_current, self.pars)
         converged = False
         prev_max_diff = 1.0
+        infl = 0.0
+        evaporation = 0.0
 
         # Anderson Acceleration memory
         m_aa = 5
@@ -289,15 +340,29 @@ class RichardEquationSolver:
         divergence_count = 0
         max_diff = 0.0
         for iter_count in range(self.max_iter):
+            if R > 0.0 and self.time_step != 'm':
+                converged = False
+                break
 
             K_half = mean(K_current[:-1], K_current[1:], self.dz.values)
 
-
+            boundary_type, q_flux, runoff, head_val = topboundary_rainfall_evaporation(h_current, K_half, self.pars['Ks'].iloc[0], R, Es, self.dz[0], h_A, self.h_max)
+            #boundary_type, boundary_val, runoff, evaporation = calculate_surface_boundary(R, Es, h_A, h_current, K_half, self.pars['Ks'].iloc[0], self.dz[0], self.h_max)
+            if boundary_type == 'head':
+                h_current[0] = head_val
+                if q_flux < 0.0:
+                    evaporation = q_flux
             A, b = assemble_system(K_half, C_current, theta_prev, theta_current, h_current, self.dz, self.dt,
                                    K_current[-1], root_water_uptake, self.z_nodes_center, self.has_water_table, self.ground_water_depth)
 
+            if boundary_type == 'flux':
+                b[0] += (q_flux / self.dz[0])  # downward positive flux
+                if q_flux < 0.0:
+                    evaporation = -q_flux
+                else:
+                    infl = q_flux
 
-            b[0] += (infl / self.dz[0])  # downward positive flux
+
 
             try:
                 b_mpi = b - (A @ h_current)
@@ -375,6 +440,7 @@ class RichardEquationSolver:
             solver = None
             runoff = 0.0
             infl = 0.0
+            evaporation = 0.0
             if self.time_step == 'h':
                 solver = RichardEquationSolver(self.soil_profile, self.prev_cond, self.param_struct, 'sm', self.use_root_uptake)
                 solver.Infiltration_So_Far = self.Infiltration_So_Far
@@ -392,18 +458,19 @@ class RichardEquationSolver:
                 for _step in range(solver.Nt):
                     new_cond_sub.th = sub_step_theta_prev + diff_water_sub
 
-                    converged, theta_current, _deep_perc, _runoff, _infl, K_current, h_current = solver.solve(
-                        step * self.Nt + _step, new_cond_sub, irrigation / solver.Nt, rainfall / solver.Nt)
+                    converged, theta_current, _deep_perc, _runoff, _infl, _evap, K_current, h_current = solver.solve(
+                        step * self.Nt + _step, new_cond_sub, irrigation / solver.Nt, rainfall / solver.Nt, EsPot/solver.Nt, rh)
 
                     sub_step_theta_prev = theta_current.copy()
 
                     runoff += _runoff
                     infl += _infl
                     deep_percolation += _deep_perc
+                    evaporation += _evap
                 self.total_fallback_mins += solver.total_fallback_mins
         elif not converged:
             dry_soil = False
-            theta_current, deep_percolation, runoff, infl, K_current, h_current = self.handle_non_convergence_bottom_up(R, theta_prev_prev, root_water_uptake)
+            theta_current, deep_percolation, runoff, infl, evaporation, K_current, h_current = self.handle_non_convergence_bottom_up(R, theta_prev_prev, root_water_uptake, Es, h_A)
 
         self.Infiltration_So_Far += infl
         # calculate deep percolation
@@ -419,109 +486,16 @@ class RichardEquationSolver:
             prev_water = sum(self.prev_cond.th * self.dz) * 1000
             new_water = sum(theta_current * self.dz) * 1000
             deep_perc = deep_percolation * 1000
-            evap_traspir = sum(root_water_uptake * self.dz) * 1000
+            transpir = sum(root_water_uptake * self.dz) * 1000
             infilt = infl * 1000
-            err = prev_water - new_water + infilt - deep_perc + evap_traspir
+            err = prev_water - new_water + infilt - deep_perc + transpir - evaporation
             if abs(err) > 0.02:
                 print('error')
 
         self.prev_cond.th = theta_current
         new_theta = theta_current.flatten()
-        return converged, new_theta, deep_percolation, runoff, infl, K_current, h_current
+        return converged, new_theta, deep_percolation, runoff, infl, evaporation, K_current, h_current
 
-
-    def handle_non_convergence_top_down(self, R, theta_prev, root_uptake_rate):
-        """
-        Handles non-convergence by using a robust, explicit finite-difference
-        scheme. This method calculates water flux based on hydraulic head gradients.
-
-        NOTE: This explicit scheme is subject to strict stability criteria and runs
-        only with timestep of 1 minute.
-        """
-        # Start with the water content from the beginning of the timestep
-        theta_new = theta_prev.copy()
-        clamped_theta = np.maximum(theta_new, self.theta_eff_residual)
-        h_current = psi_fun(clamped_theta, self.pars)
-
-        theta_new += root_uptake_rate
-
-        # 2. Handle Surface Infiltration (Top Boundary Condition)
-        infl, runoff = calculate_top_flux_infiltration(R, h_current, self.pars, self.dz, self.Infiltration_So_Far, theta_prev, self.theta_eff_sat)
-
-        available_storage_vol = max(0, (self.theta_eff_sat[0] - theta_new[0]) * self.dz[0])
-        actual_infl = min(infl, available_storage_vol)
-        runoff += (infl - actual_infl)
-
-        # Add infiltrated water volume to the top soil layer.
-        theta_new[0] += actual_infl / self.dz[0]
-
-        # 3. Handle Water Redistribution Between Layers
-        # Calculate pressure head (psi) and hydraulic conductivity (K) from water content.
-        # h_temp = psi_fun(theta_new, self.pars)
-        K_temp = K(h_current, self.pars)
-        K_half = wieghted_geometric_mean(K_temp[:-1], K_temp[1:], self.dz.values)
-        # Iterate through all interfaces between the soil layers.
-        for i in range(self.Nz - 1):
-            # Approximate hydraulic conductivity at the interface between two layers.
-            K_interface = K_half[i]
-
-            # Calculate total hydraulic head (H = psi - z) for each layer.
-            # Assumes self.z_nodes stores the depth (positive downwards) of the layer center.
-            head_i = h_current[i] - self.z_nodes[i]
-            head_i_plus_1 = h_current[i + 1] - self.z_nodes[i + 1]
-
-            # Calculate the hydraulic gradient (dH/dz) between the two layers.
-            dz_interface = (self.dz[i] + self.dz[i + 1]) / 2.0
-            hydraulic_gradient = (head_i - head_i_plus_1) / dz_interface
-
-            # Calculate water flux per unit area using Darcy's Law (q = -K * dH/dz).
-            flux_per_area = K_interface * hydraulic_gradient
-
-            # Calculate the total volume of water moving across the interface in this timestep.
-            flux_volume = flux_per_area * self.dt
-
-            # Ensure flux does not create non-physical water content values.
-            # Limit water flowing out of the upper layer.
-            available_water_vol = max(0, (theta_new[i] - self.theta_eff_residual[i])) * self.dz[i]
-            flux_volume = min(flux_volume, available_water_vol) if flux_volume > 0 else flux_volume
-
-            # Limit water flowing into the lower layer.
-            available_space_vol = max(0, (self.theta_eff_sat[i + 1] - theta_new[i + 1])) * self.dz[i + 1]
-            flux_volume = min(flux_volume, available_space_vol) if flux_volume > 0 else flux_volume
-
-            # Handle upward flux (negative volume) limitations similarly.
-            if flux_volume < 0:
-                # Limit water flowing out of the lower layer.
-                available_water_vol_lower = max(0, (theta_new[i + 1] - self.theta_eff_residual[i + 1])) * self.dz[i + 1]
-                flux_volume = max(flux_volume, -available_water_vol_lower)
-                # Limit water flowing into the upper layer.
-                available_space_vol_upper = max(0, (self.theta_eff_sat[i] - theta_new[i])) * self.dz[i]
-                flux_volume = max(flux_volume, -available_space_vol_upper)
-
-            # Update water content in the two layers based on the flux volume.
-            theta_new[i] -= flux_volume / self.dz[i]
-            theta_new[i + 1] += flux_volume / self.dz[i + 1]
-
-        # 4. Handle Deep Percolation (Bottom Boundary Condition)
-        # Assume a "free drainage" condition where the gradient is 1 (gravity driven).
-        # The flux is then equal to the hydraulic conductivity of the last layer.
-        K_bottom = K_temp[-1]
-        deep_percolation_volume = K_bottom * self.dt
-
-        # Limit percolation by the amount of drainable water in the last layer.
-        available_perc_volume = max(0, (theta_new[-1] - self.theta_eff_residual.iloc[-1])) * self.dz.iloc[-1]
-        deep_percolation_volume = min(deep_percolation_volume, available_perc_volume)
-
-        # Update the water content of the last layer.
-        theta_new[-1] -= deep_percolation_volume / self.dz.iloc[-1]
-
-        # Final deep percolation is the volume per unit area.
-        deep_percolation = deep_percolation_volume
-        clamped_theta_new = np.maximum(theta_new, self.theta_eff_residual)
-        h_new = psi_fun(clamped_theta_new, self.pars)
-        k_new = K(h_new, self.pars)
-
-        return theta_new, deep_percolation, runoff, actual_infl, k_new
 
     def calculate_vapor_flux_upward(self, theta_new, h_current):
         """
@@ -619,7 +593,7 @@ class RichardEquationSolver:
 
         return theta_new
 
-    def handle_non_convergence_bottom_up(self, R, theta_prev, root_uptake_rate):
+    def handle_non_convergence_bottom_up(self, R, theta_prev, root_uptake_rate, Es, h_A):
         """
         Handles non-convergence by using a robust, explicit finite-difference
         scheme. This method calculates water flux based on hydraulic head gradients.
@@ -637,6 +611,7 @@ class RichardEquationSolver:
         total_runoff = 0.0
         total_deep_perc = 0.0
         total_infl = 0.0
+        total_evaporation = 0.0
         theta_new = theta_prev.copy()
 
         for j in range(steps):
@@ -644,7 +619,7 @@ class RichardEquationSolver:
             h_current = psi_fun(clamped_theta, pars_sec)
 
             K_temp = K(h_current, pars_sec)
-            K_half = wieghted_geometric_mean(K_temp[:-1], K_temp[1:], self.dz.values)
+            K_half = mean(K_temp[:-1], K_temp[1:], self.dz.values)
 
             theta_new += root_uptake
 
@@ -652,6 +627,7 @@ class RichardEquationSolver:
             # Assume a "free drainage" condition where the gradient is 1 (gravity driven).
             # The flux is then equal to the hydraulic conductivity of the last layer.
             K_bottom = K_temp[-1]
+
             deep_percolation_volume = K_bottom * self.dt
 
             # Limit percolation by the amount of drainable water in the last layer.
@@ -709,16 +685,19 @@ class RichardEquationSolver:
                 # lower layer
                 theta_new[i] += flux_volume / self.dz[i]
 
-            # 2. Handle Surface Infiltration (Top Boundary Condition)
-            infl, runoff = calculate_top_flux_infiltration(r, h_current, self.pars, self.dz, self.Infiltration_So_Far,
-                                                           theta_prev, self.theta_eff_sat)
+            # 2. Handle Surface Boundary (Top Boundary Condition)
+            boundary_type, q_flux, runoff, head_val = topboundary_rainfall_evaporation(h_current, K_half, self.pars['Ks'].iloc[0], r, Es,
+                                                                                  self.dz[0], h_A, self.h_max)
+            #boundary_type, boundary_val, runoff, evaporation = calculate_surface_boundary(r, Es, h_A, h_current, K_temp, self.dz[0], self.h_max)
 
-            available_storage_vol = max(0, (self.theta_eff_sat[0] - theta_new[0]) * self.dz[0])
-            actual_infl = min(infl, available_storage_vol)
-            runoff += (infl - actual_infl)
-
-            # Add infiltrated water volume to the top soil layer.
-            theta_new[0] += actual_infl / self.dz[0]
+            if boundary_type == 'flux':
+                theta_new[0] += q_flux / self.dz[0]
+                if q_flux > 0.0:
+                    total_infl += q_flux
+                else:
+                    total_evaporation += -q_flux
+            else:
+                h_current[0] = head_val
 
             # Final deep percolation is the volume per unit area.
             deep_percolation = deep_percolation_volume
@@ -728,9 +707,10 @@ class RichardEquationSolver:
 
             total_runoff += runoff
             total_deep_perc += deep_percolation
-            total_infl += actual_infl
+            if q_flux < 0.0:
+                total_evaporation += -q_flux
 
-        return theta_new, total_deep_perc, total_runoff, total_infl, k_new, h_new
+        return theta_new, total_deep_perc, total_runoff, total_infl, total_evaporation, k_new, h_new
 
     def solve_daily(self, new_cond, irrigation, rainfall):
         R = (rainfall + irrigation) / 1000.0
