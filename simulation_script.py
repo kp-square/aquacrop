@@ -35,7 +35,7 @@ def run_simulation(args):
             break
     if expobj is not None:
         if args.hourly and args.use_richards:
-            weather_file_path = get_filepath('georgia_climate_hourly.txt')
+            weather_file_path = get_filepath('georgia_climate_hourly_rh.txt')
         else:
             weather_file_path = get_filepath('georgia_climate_daily.txt')
 
@@ -50,42 +50,8 @@ def run_simulation(args):
         else:
             irrmethod = IrrigationManagement(irrigation_method=0)
 
-        soil_types, dzz = define_soil_texture(expobj, args.texture)
-        # TARGET_TOP_LAYER_THICKNESS = 0.02
-        # TOLERANCE = 0.005
-        # dzz = []
-        # soil_types = []
-        # prev = 0.0
-        #
-        # for typ in expobj.soil_types:
-        #     typ.depth = round(typ.depth, 2)
-        #     if not typ.soil_type:
-        #         typ.soil_type = 'Loamy Fine Sand'
-        #     splits = typ.soil_type.split(' ')
-        #     splits = [x.capitalize() for x in splits]
-        #     typ.soil_type = ''.join(splits)
-        #     typ.soil_type = 'SandyClayLoam' if typ.soil_type == 'SadnyClayLoam' else typ.soil_type
-        #     dzz.append(round(typ.depth - prev, 2))
-        #     soil_types.append(typ.soil_type)
-        #     prev = typ.depth
-        #
-        # # Ensure the top layer has thickness equal to 2 cm only.
-        # if dzz and dzz[0] > (TARGET_TOP_LAYER_THICKNESS + TOLERANCE):
-        #     original_first_layer_thickness = dzz[0]
-        #     original_first_layer_type = soil_types[0]
-        #
-        #     remainder_thickness = original_first_layer_thickness - TARGET_TOP_LAYER_THICKNESS
-        #
-        #     dzz[0] = TARGET_TOP_LAYER_THICKNESS
-        #     dzz.insert(1, round(remainder_thickness, 2))
-        #
-        #     soil_types.insert(1, original_first_layer_type)
-        #
-        # # Make at least 12 layers of soil, extend the last layer
-        # # Make the total depth of soil profile at least crop.maxZ + 0.1
-        # while len(dzz) < 12:
-        #     dzz.append(dzz[-1])
-        #     soil_types.append(soil_types[-1])
+        soil_types, dzz = define_soil_texture(expobj, args.use_richards, args.texture)
+
         soil = SoilGeorgia(soil_type=soil_types, dz=dzz, evap_z_surf=0.06, evap_z_min=0.06, evap_z_max=0.10)
         step_size = 'H' if args.hourly else 'D'
         # source: https://open.clemson.edu/cgi/viewcontent.cgi?article=2297&context=all_theses
@@ -112,7 +78,7 @@ def run_simulation(args):
         model_results_df = model_os.get_simulation_results()
         return model_results_df, expobj
 
-def define_soil_texture(expobj, texture=None):
+def define_soil_texture(expobj, use_richards=False, texture=None):
     dz = []
     soil_types = []
     prev = 0.0
@@ -120,15 +86,17 @@ def define_soil_texture(expobj, texture=None):
     for typ in expobj.soil_types:
         typ.depth = round(typ.depth, 2)
         prev_depth = prev  # Start from where previous layer ended
-
+        levels = [0.1, 0.1, 0.2]
+        if use_richards:
+            levels = [0.02, 0.05, 0.10]
         while prev_depth < typ.depth:
             # Determine compartment size based on current cumulative depth
-            if sum(dz) < 0.2:  # First 20 cm: 2 cm compartments
-                compartment_size = 0.02
-            elif sum(dz) < 1.0:  # Next 80 cm (up to 1 m): 5 cm compartments
-                compartment_size = 0.05
-            else:  # Rest: 10 cm compartments
-                compartment_size = 0.10
+            if sum(dz) < 0.2:  # First 20 cm: levels[0] m compartments
+                compartment_size = levels[0]
+            elif sum(dz) < 1.0:  # Next 80 cm (up to 1 m): levels[1] m compartments
+                compartment_size = levels[1]
+            else:  # Rest: levels[2] m compartments
+                compartment_size = levels[2]
 
             # Calculate next depth
             next_depth = prev_depth + compartment_size

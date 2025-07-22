@@ -494,3 +494,298 @@ def soil_evaporation_hourly(
         EsAct,
         EsPot,
     )
+
+
+def soil_evaporation_hourly_boundary(
+        ClockStruct_SimOffSeason: bool,
+        ClockStruct_TimeStepCounter: int,
+        prof: "SoilProfile",
+        Soil_EvapZmin: float,
+        Soil_EvapZmax: float,
+        Soil_REW: float,
+        Soil_Kex: float,
+        Soil_fwcc: float,
+        Soil_fWrelExp: float,
+        Soil_fevap: float,
+        Crop_CalendarType: int,
+        Crop_Senescence: float,
+        IrrMngt_IrrMethod: int,
+        IrrMngt_WetSurf: float,
+        FieldMngt_Mulches: bool,
+        FieldMngt_fMulch: float,
+        FieldMngt_MulchPct: float,
+        NewCond_DAP: int,
+        NewCond_Wsurf: float,
+        NewCond_EvapZ: float,
+        NewCond_Stage2: float,
+        NewCond_th: "ndarray",
+        NewCond_DelayedCDs: float,
+        NewCond_GDDcum: float,
+        NewCond_DelayedGDDs: float,
+        NewCond_CCxW: float,
+        NewCond_CCadj: float,
+        NewCond_CCxAct: float,
+        NewCond_CC: float,
+        NewCond_PrematSenes: bool,
+        NewCond_SurfaceStorage: float,
+        NewCond_Wstage2: float,
+        # all these are hourly values
+        et0: float,
+        Infl: float,
+        Rain: float,
+        Rain_so_far: float,
+        Irr: float,
+        growing_season: bool,
+) -> Tuple[float, "ndarray", bool, float, float, float, float, float, float]:
+    """
+    Function to calculate daily soil evaporation
+
+    <a href="https://www.fao.org/3/BR248E/br248e.pdf#page=82" target="_blank">Reference Manual: evaporation equations</a> (pg. 73-81)
+
+
+    Arguments:
+
+        ClockStruct_SimOffSeason (bool): simulate off season? (False=no, True=yes)
+
+        ClockStruct_TimeStepCounter (int): time step counter
+
+        prof (SoilProfile): soil profile object
+
+        Soil_EvapZmin (float): minimum evaporation depth (m)
+
+        Soil_EvapZmax (float): maximum evaporation depth (m)
+
+        Soil_REW (float): Readily Evaporable Water
+
+        Soil_Kex (float): Soil evaporation coefficient
+
+        Soil_fwcc (float):
+
+        Soil_fWrelExp (float):
+
+        Soil_fevap (float):
+
+        Crop_CalendarType (int): calendar type
+
+        Crop_Senescence (float):
+
+        IrrMngt_IrrMethod (int): irrigation method
+
+        IrrMngt_WetSurf (float): wet surface area
+
+        FieldMngt_Mulches (bool): mulch present? (0=no, 1=yes)
+
+        FieldMngt_fMulch (float): mulch factor
+
+        FieldMngt_MulchPct (float): mulch percentage
+
+        NewCond_DAP (int): days after planting
+
+        NewCond_Wsurf (float): wet surface area
+
+        NewCond_EvapZ (float): evaporation depth (m)
+
+        NewCond_Stage2 (float): stage 2 evaporation
+
+        NewCond_th (ndarray): soil water content
+
+        NewCond_DelayedCDs: delayed calendar days
+
+        NewCond_GDDcum (float): cumulative growing degree days
+
+        NewCond_DelayedGDDs (float): delayed growing degree days
+
+        NewCond_CCxW (float):
+
+        NewCond_CCadj (float): canopy cover adjusted
+
+        NewCond_CCxAct: max canopy cover actual
+
+        NewCond_CC (float): canopy cover
+
+        NewCond_PrematSenes (bool): prematurity senescence? (0=no, 1=yes)
+
+        NewCond_SurfaceStorage (float): surface storage
+
+        NewCond_Wstage2 (float): stage 2 water content
+
+        NewCond_Epot (float): potential evaporation
+
+        et0 (float): hourly reference evapotranspiration
+
+        Infl (float): Infiltration on current hour
+
+        Rain (float): hourly precipitation mm
+
+        Irr (float): Irrigation applied on current hour
+
+        growing_season (bool): is growing season (True or Flase)
+
+
+    Returns:
+
+        NewCond_Epot (float): Potential surface evaporation current day
+
+        NewCond_th (ndarray): updated soil water content
+
+        NewCond_Stage2 (bool): stage 2 soil evaporation
+
+        NewCond_Wstage2 (float): stage 2 soil evaporation
+
+        NewCond_Wsurf (float): updated surface water content
+
+        NewCond_SurfaceStorage (float): updated surface storage
+
+        NewCond_EvapZ (float): updated evaporation layer depth
+
+        EsAct (float): Actual surface evaporation current day
+
+        EsPot (float): Potential surface evaporation current day
+
+    """
+
+    # Wevap = WaterEvaporation()
+
+    ## Store initial conditions in new structure that will be updated ##
+    # NewCond = InitCond
+
+    ## Prepare stage 2 evaporation (rew gone) ##
+    # Only do this if it is first day of simulation, or if it is first day of
+    # growing season and not simulating off-season
+    if (ClockStruct_TimeStepCounter == 0) or (
+            (NewCond_DAP == 1) and (ClockStruct_SimOffSeason == False)
+    ):
+        # Reset storage in surface soil layer to zero
+        NewCond_Wsurf = 0
+        # Set evaporation depth to minimum
+        NewCond_EvapZ = Soil_EvapZmin
+        # Trigger stage 2 evaporation
+        NewCond_Stage2 = True
+        # Get relative water content for start of stage 2 evaporation
+        # water content at evaporation depth for different conditions such as at saturation, at field capacity,
+        # at wilting point, dry soil and finally actual water content
+        Wevap_Sat, Wevap_Fc, Wevap_Wp, Wevap_Dry, Wevap_Act = evap_layer_water_content(
+            NewCond_th,  # water in each layer
+            NewCond_EvapZ,  # evaporation depth
+            prof,  # soil profile
+        )
+        # Soil_REW: readily evaporable water
+        NewCond_Wstage2 = round(
+            (Wevap_Act - (Wevap_Fc - Soil_REW)) / (Wevap_Sat - (Wevap_Fc - Soil_REW)), 2
+        )
+        if NewCond_Wstage2 < 0:
+            NewCond_Wstage2 = 0
+
+    ## Prepare soil evaporation stage 1 ##
+    # Adjust water in surface evaporation layer for any infiltration
+    if (Rain > 0) or ((Irr > 0) and (IrrMngt_IrrMethod != 4)):
+        # Only prepare stage one when rainfall occurs, or when irrigation is
+        # trigerred (not in net irrigation mode)
+        if Infl > 0:
+            # Update storage in surface evaporation layer for incoming
+            # infiltration
+            NewCond_Wsurf = Infl
+            # Water stored in surface evaporation layer cannot exceed rew
+            if NewCond_Wsurf > Soil_REW:
+                NewCond_Wsurf = Soil_REW
+
+            # Reset variables
+            NewCond_Wstage2 = 0
+            NewCond_EvapZ = Soil_EvapZmin
+            NewCond_Stage2 = False
+
+    ## Calculate potential soil evaporation rate (mm/hour) ##
+    if growing_season == True:
+        # Adjust time for any delayed development
+        if Crop_CalendarType == 1:
+            tAdj = NewCond_DAP - NewCond_DelayedCDs
+        elif Crop_CalendarType == 2:
+            tAdj = NewCond_GDDcum - NewCond_DelayedGDDs
+
+        # Calculate maximum potential soil evaporation rate (mm/hr)
+        EsPotMax = Soil_Kex * et0 * (1 - NewCond_CCxW * (Soil_fwcc / 100))
+        # Calculate potential soil evaporation (given current canopy cover
+        # size)
+        EsPot = Soil_Kex * et0 * (1 - NewCond_CCadj)
+
+        # Adjust potential soil evaporation for effects of withered canopy
+        if (tAdj > Crop_Senescence) and (NewCond_CCxAct > 0):
+            if NewCond_CC > (NewCond_CCxAct / 2):
+                if NewCond_CC > NewCond_CCxAct:
+                    mult = 0
+                else:
+                    mult = (NewCond_CCxAct - NewCond_CC) / (NewCond_CCxAct / 2)
+
+            else:
+                mult = 1
+
+            EsPot = EsPot * (1 - NewCond_CCxAct * (Soil_fwcc / 100) * mult)
+            CCxActAdj = (
+                    (1.72 * NewCond_CCxAct) - (NewCond_CCxAct ** 2) + 0.3 * (NewCond_CCxAct ** 3)
+            )
+            EsPotMin = Soil_Kex * (1 - CCxActAdj) * et0
+            if EsPotMin < 0:
+                EsPotMin = 0
+
+            if EsPot < EsPotMin:
+                EsPot = EsPotMin
+            elif EsPot > EsPotMax:
+                EsPot = EsPotMax
+
+        if NewCond_PrematSenes == True:
+            if EsPot > EsPotMax:
+                EsPot = EsPotMax
+
+    else:
+        # No canopy cover outside of growing season so potential soil
+        # evaporation only depends on reference evapotranspiration
+        EsPot = Soil_Kex * et0
+
+    ## Adjust potential soil evaporation for mulches and/or partial wetting ##
+    # mulches
+    if NewCond_SurfaceStorage < 0.000001:
+        if not FieldMngt_Mulches:
+            # No mulches present
+            EsPotMul = EsPot
+        elif FieldMngt_Mulches:
+            # mulches present
+            EsPotMul = EsPot * (1 - FieldMngt_fMulch * (FieldMngt_MulchPct / 100))
+
+    else:
+        # Surface is flooded - no adjustment of potential soil evaporation for
+        # mulches
+        EsPotMul = EsPot
+
+    # Partial surface wetting by irrigation
+    if (Irr > 0) and (IrrMngt_IrrMethod != 4):
+        # Only apply adjustment if irrigation occurs and not in net irrigation
+        # mode
+        if (Rain_so_far > 1) or (NewCond_SurfaceStorage > 0):
+            # No adjustment for partial wetting - assume surface is fully wet
+            EsPotIrr = EsPot
+        else:
+            # Adjust for proprtion of surface area wetted by irrigation
+            EsPotIrr = EsPot * (IrrMngt_WetSurf / 100)
+
+    else:
+        # No adjustment for partial surface wetting
+        EsPotIrr = EsPot
+
+    # Assign minimum value (mulches and partial wetting don't combine)
+    EsPot = min(EsPotIrr, EsPotMul)
+
+    NewCond_Epot = EsPot
+    EsAct = 0.0
+
+
+    return (
+        NewCond_Epot,
+        NewCond_th,
+        NewCond_Stage2,
+        NewCond_Wstage2,
+        NewCond_Wsurf,
+        NewCond_SurfaceStorage,
+        NewCond_EvapZ,
+        EsAct,
+        EsPot,
+    )

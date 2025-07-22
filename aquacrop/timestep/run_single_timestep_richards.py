@@ -18,7 +18,7 @@ from ..solution.growth_stage import growth_stage
 from ..solution.canopy_cover import canopy_cover
 from ..solution.transpiration import transpiration
 from ..solution.transpiration_hourly import  transpiration_daily_setup_update_parameters, transpiration_hourly_setup, transpiration_post_daily
-from ..solution.soil_evaporation_hourly import  soil_evaporation_hourly
+from ..solution.soil_evaporation_hourly import  soil_evaporation_hourly, soil_evaporation_hourly_boundary
 from ..solution.groundwater_inflow import groundwater_inflow
 from ..solution.harvest_index import harvest_index
 
@@ -91,6 +91,7 @@ def solution_single_time_step_richards(
     temp_min = min(temp_mean)
     temp_max = max(temp_mean)
     et0 = weather_step[:,2]
+    relative_humidity = weather_step[:,3]
     precipitation_daily = sum(precipitation)
     t_start = time.time()
     # Store initial conditions in structure for updating %%
@@ -357,7 +358,7 @@ def solution_single_time_step_richards(
             NewCond.evap_z,
             Es,
             EsPot,
-        ) = soil_evaporation_hourly(
+        ) = soil_evaporation_hourly_boundary(
             # clock_struct.evap_time_steps,
             clock_struct.sim_off_season,
             clock_struct.time_step_counter,
@@ -400,14 +401,15 @@ def solution_single_time_step_richards(
             growing_season,
         )
 
-        Es_daily += Es
+
         EsPot_daily += EsPot
         # NewCond.th has the volumetric water content for each compartment
         Irr_so_far += irr_hr
         Precip_so_far += precipitation_hr
-        converged, new_th, DeepPerc, Runoff, Infl, FluxOut, mat_pot = solver.solve(hour, NewCond,
+        rh = relative_humidity[hour]
+        converged, new_th, DeepPerc, Runoff, Infl, Es, FluxOut, mat_pot = solver.solve(hour, NewCond,
                                                                                     irr_hr,
-                                                                                    precipitation_hr)
+                                                                                    precipitation_hr, EsPot, rh)
         # datetime_val = clock_struct.planting_dates[0] + timedelta(hours=hour)
         # with open('sensordata.csv', 'a') as f:
         #     f.write(f"{datetime_val},{-mat_pot[7]},{-mat_pot[13]},{-mat_pot[16]}\n")
@@ -417,6 +419,7 @@ def solution_single_time_step_richards(
         DeepPerc_daily += DeepPerc*1000
         Runoff_daily += Runoff*1000
         Infl_daily += Infl*1000
+        Es_daily += Es*1000
 
         total_water_now = sum(NewCond.th * Soil.profile.dz) * 1000
         err = total_water_begin - total_water_now - DeepPerc_daily - Runoff_daily - Es_daily - Tr_daily + Irr_so_far + Precip_so_far

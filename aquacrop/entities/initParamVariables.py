@@ -110,3 +110,4 @@ class InitialCondition:
 
         self.depletion = 0
         self.taw = 0
+        self.rh = 0
