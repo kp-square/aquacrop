@@ -314,7 +314,7 @@ def solution_single_time_step_richards(
         # TrPot_ = Total potential transpiration in ideal condition
         # NewCond = NewCond.th contains the updated water in each compartment
         # IrrNet_ = irrigation water to be applied to balance to make each compartment have critical water content
-        TrAct_, TrPot_NS_, TrPot_, NewCond, IrrNet_ = transpiration_hourly_setup(
+        TrAct, TrPot_NS, TrPot, NewCond, IrrNet_ = transpiration_hourly_setup(
                                                     Soil.Profile,
                                                     Soil.nComp,
                                                     Soil.z_top,
@@ -330,9 +330,8 @@ def solution_single_time_step_richards(
                                                 )
 
 
-        Tr_daily += TrAct_
-        TrPot_NS_daily += TrPot_NS_
-        TrPot_daily += TrPot_
+        TrPot_NS_daily += TrPot_NS
+        TrPot_daily += TrPot
         # if irrigation_method  == 4, IrrNet_ != 0 else IrrNet_ = 0
         Irr_applied_daily += IrrNet_
 
@@ -407,9 +406,9 @@ def solution_single_time_step_richards(
         Irr_so_far += irr_hr
         Precip_so_far += precipitation_hr
         rh = relative_humidity[hour]
-        converged, new_th, DeepPerc, Runoff, Infl, Es, FluxOut, mat_pot = solver.solve(hour, NewCond,
+        converged, new_th, DeepPerc, Runoff, Infl, Es, Tr, FluxOut, mat_pot = solver.solve(hour, NewCond,
                                                                                     irr_hr,
-                                                                                    precipitation_hr, EsPot, rh)
+                                                                                    precipitation_hr, EsPot, TrPot, rh)
         datetime_val = clock_struct.planting_dates[0] + timedelta(hours=hour)
         with open('sensordata.csv', 'a') as f:
             vals = [str(x) for x in mat_pot]
@@ -421,6 +420,7 @@ def solution_single_time_step_richards(
         Runoff_daily += Runoff*1000
         Infl_daily += Infl*1000
         Es_daily += Es*1000
+        Tr_daily += Tr*1000
 
         total_water_now = sum(NewCond.th * Soil.profile.dz) * 1000
         err = total_water_begin - total_water_now - DeepPerc_daily - Runoff_daily - Es_daily - Tr_daily + Irr_so_far + Precip_so_far

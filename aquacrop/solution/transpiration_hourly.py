@@ -1,6 +1,8 @@
 
 import os
 import numpy as np
+from numpy import ndarray
+
 from ..entities.totalAvailableWater import TAW
 from ..entities.moistureDepletion import Dr
 from ..entities.rootZoneWaterContent import RootZoneWater

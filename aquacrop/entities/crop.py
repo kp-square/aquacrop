@@ -175,9 +175,14 @@ class Crop:
 
         self.FloweringCD = 0
         self.FloweringEnd = 0.0
+        # Feddes Parameters
+        self.h1 = -0.1
+        self.h2 = -0.25
+        self.h3_low = -2.0
+        self.h3_high = -8.0
+        self.h4 = -150.0
 
         if c_name == "custom":
-
             self.Name = "custom"
             self.planting_date = planting_date  # Planting Date (mm/dd)
             self.harvest_date = harvest_date  # Latest Harvest Date (mm/dd)
@@ -284,6 +289,12 @@ class Crop:
             "HIstartCD",
             "FloweringCD",
             "YldFormCD",
+            # Feddes parameters
+            "h1",
+            "h2",
+            "h3_low",
+            "h3_high",
+            "h4"
         }
 
         self.__dict__.update(
