@@ -155,21 +155,21 @@ class SoilGeorgia:
                 self.cn = 61
                 self.calc_cn = 0
                 self.rew = 9
-            self.add_layer(sum(dz), 0.1, 0.3, 0.5, 1060.8, 100, 0.065, 7.5, 1.89, 0.5)
+            self.add_layer(sum(dz), 0.100, 0.3, 0.5, 1060.8, 100, 0.065, 7.5, 1.89, 0.5)
 
         elif soil_type == "Loam":
             if first_layer:
                 self.cn = 61
                 self.calc_cn = 0
                 self.rew = 9
-            self.add_layer(sum(dz), 0.09, 0.19, 0.43, 252.29, 100, 0.078, 3.67, 1.56, 0.5)
+            self.add_layer(sum(dz), 0.092, 0.19, 0.43, 252.29, 100, 0.078, 3.67, 1.56, 0.5)
 
         elif soil_type == "LoamySand":
             if first_layer:
                 self.cn = 46
                 self.calc_cn = 0
                 self.rew = 5
-            self.add_layer(sum(dz), 0.057, 0.081, 0.41, 1602, 100, 0.0569, 12.5, 2.27, 0.5)
+            self.add_layer(sum(dz), 0.057, 0.081, 0.41, 1602, 100, 0.051, 12.5, 2.27, 0.5)
 
         elif soil_type == "FineSand":
             if first_layer:
@@ -183,7 +183,7 @@ class SoilGeorgia:
                 self.cn = 46
                 self.calc_cn = 0
                 self.rew = 4
-            self.add_layer(sum(dz), 0.007, 0.043, 0.421, 4348, 100, 0.005, 14.5, 2.68, 0.5)
+            self.add_layer(sum(dz), 0.016, 0.053, 0.421, 4348, 100, 0.010, 14.5, 2.68, 0.5)
 
         elif soil_type == "SandyClay":
             if first_layer:
@@ -204,14 +204,14 @@ class SoilGeorgia:
                 self.cn = 46
                 self.calc_cn = 0
                 self.rew = 7
-            self.add_layer(sum(dz), 0.066, 0.116, 0.41, 988, 100, 0.064, 7.5, 1.89, 0.5)
+            self.add_layer(sum(dz), 0.066, 0.116, 0.41, 988, 100, 0.059, 7.5, 1.89, 0.5)
 
         elif soil_type == "LoamyFineSand":
             if first_layer:
                 self.cn = 46
                 self.calc_cn = 0
                 self.rew = 6
-            self.add_layer(sum(dz), 0.032, 0.077, 0.402, 2113, 100, 0.029, 10.5, 1.95, 0.5)
+            self.add_layer(sum(dz), 0.033, 0.077, 0.402, 2113, 100, 0.026, 10.5, 1.95, 0.5)
 
         elif soil_type == "Silt":
             if first_layer:
