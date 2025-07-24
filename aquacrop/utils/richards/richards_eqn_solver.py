@@ -351,7 +351,7 @@ class RichardEquationSolver:
 
 
     def compute_transpiration(self, h_current, Tr):
-        b_x = distribution_function(self.z_nodes, self.prev_cond.z_root)
+        b_x = distribution_function(self.z_nodes_center, self.prev_cond.z_root, self.dz.values)
         h1, h2, h4 = self.crop.h1, self.crop.h2, self.crop.h4
         if self.time_step == 'd':
             h3 = self.crop.h3_low if Tr < 5e-3 else self.crop.h3_high
@@ -556,7 +556,7 @@ class RichardEquationSolver:
             transpir = transpiration * 1000
             evapo = evaporation * 1000
             infilt = infl * 1000
-            err = prev_water - new_water + infilt - deep_perc + transpir - evapo
+            err = prev_water - new_water + infilt - deep_perc - transpir - evapo
             if abs(err) > 0.02:
                 print('error')
 
@@ -682,7 +682,7 @@ class RichardEquationSolver:
         K_temp = K(h_current, pars_sec)
         K_half = mean(K_temp[:-1], K_temp[1:], self.dz.values)
         root_uptake = self.compute_transpiration(h_current, Tr)
-        transpiration = sum(root_uptake)
+        transpiration = sum(root_uptake * self.dz)
         infl = 0.0
         evaporation = 0.0
         theta_new = theta_new - root_uptake
