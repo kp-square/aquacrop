@@ -55,7 +55,7 @@ def run_simulation(args):
         soil = SoilGeorgia(soil_type=soil_types, dz=dzz, evap_z_surf=0.06, evap_z_min=0.06, evap_z_max=0.10)
         step_size = 'H' if args.hourly else 'D'
         # source: https://open.clemson.edu/cgi/viewcontent.cgi?article=2297&context=all_theses
-        cotton_params = {'CGC_CD':0.10, 'CDC_CD':0.029, 'CCx':0.98, 'Kcb':1.1, 'Zx':1.2, 'WP':args.WP, 'HI0':args.HI0, 'EmergenceCD':3, 'SenescenceCD': 100, 'MaturityCD': 160, 'FloweringCD':42, 'Tbase':15.6, "HIstartCD":64, 'YldFormCD':95, 'SwitchGDD':1}
+        cotton_params = {'CGC_CD':0.10, 'CDC_CD':0.029, 'CCx':0.98, 'Kcb':1.1, 'Zx':1.2, 'WP':args.WP, 'HI0':args.HI0, 'EmergenceCD':3, 'SenescenceCD': 100, 'MaturityCD': 160, 'FloweringCD':42, 'Tbase':15.6, "HIstartCD":64, 'YldFormCD':95, 'SwitchGDD':1,  'h1':-0.1, 'h2':-0.25, 'h3_low': -8.0, 'h3_high':-2.0, 'h4':-11.0}
         # I may need to test for corn later
         # source: https://extension.missouri.edu/media/wysiwyg/Extensiondata/CountyPages/Scott/Irrigation/Estimated-Water-Use-Corn-Georgia.pdf
         # source: https://www.sciencedirect.com/science/article/pii/S0378377418317128?casa_token=3li4XZy-0EIAAAAA:sz1Z1SeThgCzLiVUpZ6JqB0Le_b9ipfAZsexuLDjgHRmyLZi9jzQUP-HvFvriLw1TZioBxnjHA

@@ -178,9 +178,9 @@ class Crop:
         # Feddes Parameters
         self.h1 = -0.1
         self.h2 = -0.25
-        self.h3_low = -2.0
-        self.h3_high = -8.0
-        self.h4 = -150.0
+        self.h3_low = -8.0
+        self.h3_high = -2.0
+        self.h4 = -11.0
 
         if c_name == "custom":
             self.Name = "custom"

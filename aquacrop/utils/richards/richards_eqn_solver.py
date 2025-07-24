@@ -241,7 +241,8 @@ def assemble_system(K_half, C_val, theta_prev, theta_curr, h_curr, dz, dt, K_bot
     return A, b
 
 
-def distribution_function(x, Lr):
+def distribution_function(x, Lr, dz):
+    Lr = max(Lr, 1e-5)
     cond1 = x < 0.2 * Lr
     cond2 = x < Lr  # This is implicitly (x >= 0.2 * Lr) & (x < Lr) in the nested where
 
@@ -253,7 +254,11 @@ def distribution_function(x, Lr):
     # Apply conditions using nested np.where for if/elif/else logic
     result = np.where(cond1, val1, np.where(cond2, val2, val3))
 
-    return result/max(1e-10, sum(result))
+    # each compartment is a trapezoid with result representing mean of sides
+    # dz is the height
+    areas = result * dz
+    normalized_areas = areas/max(np.sum(areas), 1e-5)
+    return normalized_areas
 
 def alpha_function(h, h1, h2, h3, h4):
     """
